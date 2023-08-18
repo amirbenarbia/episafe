@@ -116,5 +116,28 @@ void setup() {
 void loop() {
   SensorData data;
   readSensors(data);
-  delay(1000);
+
+  // Send data via Bluetooth every 10 minutes
+  if (millis() - startTime >= recordingDuration) {
+    // Reset the start time
+    startTime = millis();
+
+    // Convert SensorData to a string
+    String dataString = "Heart Rate: " + String(data.pulseSensorValue) + " BPM\n";
+    dataString += "Temperature: " + String(data.objectTempC) + "°C\n";
+    dataString += "Acceleration X: " + String(data.accelerationX) + " m/s^2\n";
+    dataString += "Acceleration Y: " + String(data.accelerationY) + " m/s^2\n";
+    dataString += "Acceleration Z: " + String(data.accelerationZ) + " m/s^2\n";
+    dataString += "Rotation X: " + String(data.rotationX) + " rad/s\n";
+    dataString += "Rotation Y: " + String(data.rotationY) + " rad/s\n";
+    dataString += "Rotation Z: " + String(data.rotationZ) + " rad/s\n";
+    dataString += "Temperature: " + String(data.temperature) + " degC\n";
+    dataString += "EDA: " + String(data.conductance) + "\n";
+
+    // Send data via Bluetooth
+    SerialBT.println(dataString);
+  }
+
+  delay(1000); // Adjust delay as needed
 }
+
