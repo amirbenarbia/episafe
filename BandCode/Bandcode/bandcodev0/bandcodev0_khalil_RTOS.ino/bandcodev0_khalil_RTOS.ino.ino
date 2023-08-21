@@ -4,7 +4,7 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 
-#define PIN_VO 12
+#define PIN_VO 12 
 #define PIN_VBIAS 14
 #define VDD 5.0
 #define VREF 5.0
