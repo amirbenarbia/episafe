@@ -17,6 +17,7 @@ const int PulseSensorPurplePin = 36;
 
 int Signal;
 int Threshold = 2000;
+int bluetoothDelayTime = 10000 ; 
 unsigned long lastBeatTime = 0;
 unsigned long currentBeatTime;
 int beatsPerMinute;
@@ -88,7 +89,7 @@ void bluetoothTask(void * parameter) {
       dataString += "Temperature: " + String(data.temperature) + " degC\n";
       dataString += "EDA: " + String(data.conductance) + "\n";
       SerialBT.println(dataString);
-      delay(10000);
+      delay(bluetoothDelayTime);
     }
   }
 }
