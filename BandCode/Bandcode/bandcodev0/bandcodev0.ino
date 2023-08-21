@@ -106,6 +106,24 @@ void readSensors(SensorData& data) {
     readEDA(data);
 }
 
+String createDataString(const SensorData& data) {
+    return 
+        "+---------------------+------------+\n" +
+        "| Parameter           | Value      |\n" +
+        "+---------------------+------------+\n" +
+        "| Heart Rate          | " + String(data.pulseSensorValue) + " BPM       |\n" +
+        "| Temperature         | " + String(data.objectTempC) + "°C         |\n" +
+        "| Acceleration X      | " + String(data.accelerationX) + " m/s^2 |\n" +
+        "| Acceleration Y      | " + String(data.accelerationY) + " m/s^2 |\n" +
+        "| Acceleration Z      | " + String(data.accelerationZ) + " m/s^2 |\n" +
+        "| Rotation X          | " + String(data.rotationX) + " rad/s  |\n" +
+        "| Rotation Y          | " + String(data.rotationY) + " rad/s  |\n" +
+        "| Rotation Z          | " + String(data.rotationZ) + " rad/s  |\n" +
+        "| Temp from MPU6050   | " + String(data.temperature) + "°C         |\n" +
+        "| EDA                 | " + String(data.conductance) + "          |\n" +
+        "+---------------------+------------+";
+}
+
 void setup() {
     pinMode(PIN_VO, INPUT);
     pinMode(PIN_VBIAS, INPUT);
@@ -134,21 +152,9 @@ void loop() {
     // Send data via Bluetooth every 10 minutes
     if (millis() - startTime >= recordingDuration) {
         startTime = millis();  // Reset the start time
-
-        String dataString = 
-            "Heart Rate: " + String(data.pulseSensorValue) + " BPM\n" +
-            "Temperature: " + String(data.objectTempC) + "°C\n" +
-            "Acceleration X: " + String(data.accelerationX) + " m/s^2\n" +
-            "Acceleration Y: " + String(data.accelerationY) + " m/s^2\n" +
-            "Acceleration Z: " + String(data.accelerationZ) + " m/s^2\n" +
-            "Rotation X: " + String(data.rotationX) + " rad/s\n" +
-            "Rotation Y: " + String(data.rotationY) + " rad/s\n" +
-            "Rotation Z: " + String(data.rotationZ) + " rad/s\n" +
-            "Temperature: " + String(data.temperature) + " degC\n" +
-            "EDA: " + String(data.conductance) + "\n";
-
+        String dataString = createDataString(data);
         SerialBT.println(dataString);
     }
 
-    delay(1000);  // Adjust delay as needed
+    delay(500);  // Adjust delay as needed
 }
