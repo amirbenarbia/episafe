@@ -10,19 +10,6 @@
 #define VREF 5.0
 #define MAX_READ 1024
 
-BluetoothSerial SerialBT;
-Adafruit_MPU6050 mpu;
-Adafruit_MLX90614 mlx = Adafruit_MLX90614();
-const int PulseSensorPurplePin = 36;
-
-int Signal;
-int Threshold = 2000;
-unsigned long lastBeatTime = 0;
-unsigned long currentBeatTime;
-int beatsPerMinute;
-
-unsigned long startTime;
-const unsigned long recordingDuration = 10 * 60 * 1000;
 
 struct SensorData {
   int pulseSensorValue;
@@ -36,6 +23,27 @@ struct SensorData {
   float rotationZ;
   float temperature;
 };
+
+BluetoothSerial SerialBT;
+Adafruit_MPU6050 mpu;
+Adafruit_MLX90614 mlx = Adafruit_MLX90614();
+const int PulseSensorPurplePin = 36;
+
+int Signal;
+int Threshold = 2000;
+unsigned long lastBeatTime = 0;
+unsigned long currentBeatTime;
+int beatsPerMinute;
+
+unsigned long startTime;
+const unsigned long recordingDuration = 5 * 60 * 1000; // 10 minutes in milliseconds
+const unsigned long dataInterval = 500; // Collect data every 1 second
+const int maxDataPoints = recordingDuration / dataInterval;
+
+SensorData dataBuffer[maxDataPoints];
+int dataCount = 0;
+
+
 
 
 void readSensors(SensorData& data) {
@@ -54,7 +62,7 @@ void readSensors(SensorData& data) {
 
   // Read temperature sensor
   data.objectTempC = mlx.readObjectTempC();
-  Serial.print("Temperature = ");
+  Serial.print("Temperature corp = ");
   Serial.print(data.objectTempC);
   Serial.println("°C");
 
@@ -112,32 +120,45 @@ void setup() {
     while (1);
   }
 }
+String dataString;
 
 void loop() {
   SensorData data;
   readSensors(data);
 
-  // Send data via Bluetooth every 10 minutes
+    // Store data in the buffer
+  if (dataCount < maxDataPoints) {
+    dataBuffer[dataCount] = data;
+    dataCount++;
+  }
+
+   // Check if it's time to send data
   if (millis() - startTime >= recordingDuration) {
     // Reset the start time
     startTime = millis();
+  
+dataString = ""; // Clear the dataString
+        // Send collected data via Bluetooth
+    for (int i = 0; i < dataCount; i++) {
 
-    // Convert SensorData to a string
-    String dataString = "Heart Rate: " + String(data.pulseSensorValue) + " BPM\n";
-    dataString += "Temperature: " + String(data.objectTempC) + "°C\n";
-    dataString += "Acceleration X: " + String(data.accelerationX) + " m/s^2\n";
-    dataString += "Acceleration Y: " + String(data.accelerationY) + " m/s^2\n";
-    dataString += "Acceleration Z: " + String(data.accelerationZ) + " m/s^2\n";
-    dataString += "Rotation X: " + String(data.rotationX) + " rad/s\n";
-    dataString += "Rotation Y: " + String(data.rotationY) + " rad/s\n";
-    dataString += "Rotation Z: " + String(data.rotationZ) + " rad/s\n";
-    dataString += "Temperature: " + String(data.temperature) + " degC\n";
-    dataString += "EDA: " + String(data.conductance) + "\n";
+       dataString += "Heart Rate: " + String(dataBuffer[i].pulseSensorValue) + " BPM ,";
+       dataString += "Temp Corp: " + String(dataBuffer[i].objectTempC) + "°C ,";
+       dataString += "Acceleration X: " + String(dataBuffer[i].accelerationX) + " m/s^2 ,";
+       dataString += "Acceleration Y: " + String(dataBuffer[i].accelerationY) + " m/s^2 ,";
+       dataString += "Acceleration Z: " + String(dataBuffer[i].accelerationZ) + " m/s^2 ,";
+       dataString += "Rotation X: " + String(dataBuffer[i].rotationX) + " rad/s ,";
+       dataString += "Rotation Y: " + String(dataBuffer[i].rotationY) + " rad/s ,";
+       dataString += "Rotation Z: " + String(dataBuffer[i].rotationZ) + " rad/s ,";
+       dataString += "Temperature: " + String(dataBuffer[i].temperature) + "  degC ,";
+       dataString += "EDA: " + String(dataBuffer[i].conductance) + " \n";
+      SerialBT.print(dataString);
+      delay(50);
 
-    // Send data via Bluetooth
-    SerialBT.println(dataString);
+      //Serial.println(sizeof(dataString));
+    }
+  
+ // Reset data count and buffer
+     dataCount = 0;
   }
-
-  delay(1000); // Adjust delay as needed
+  delay(dataInterval); // Collect data every 1 second
 }
-
