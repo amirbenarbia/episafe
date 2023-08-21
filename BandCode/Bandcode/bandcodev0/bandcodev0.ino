@@ -1,233 +1,182 @@
-#include <Wire.h>
-#include <Adafruit_MLX90614.h>
-#include <BluetoothSerial.h>
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_Sensor.h>
-#define PIN_VO 12
-#define PIN_VBIAS 14
-// arduino voltage
-#define VDD 5.0
-// reference voltage for ADC
-#define VREF 5.0
-// input resolution
-#define MAX_READ 1024
-
-BluetoothSerial SerialBT;
-Adafruit_MPU6050 mpu;
-Adafruit_MLX90614 mlx = Adafruit_MLX90614();
-
-const int PulseSensorPurplePin = 36;
-const int xpin = A0;
-const int ypin = A3;
-const int zpin = A4;
-
-int Signal; // Holds the incoming raw data. Signal value can range from 0-1024
-int Threshold = 2000; // Determine which Signal to "count as a beat" and which to ignore.
-
-unsigned long lastBeatTime = 0; // The time when the last beat occurred
-unsigned long currentBeatTime; // The time when the current beat occurs
-int beatsPerMinute; // Calculated heart rate in BPM
-
-unsigned long startTime; // To store the start time
-const unsigned long recordingDuration = 10 * 60 * 1000; // 10 minutes in milliseconds
-
-struct SensorData {
-  int pulseSensorValue;
-  float objectTempC;
-  float xAxis;
-  float yAxis;
-  float zAxis;
-  float conductance;
-};
-
-const int bufferSize = 600; // Number of data points (adjust as needed)
-SensorData dataBuffer[bufferSize];
-int bufferIndex = 0;
-
-
-void readPulseSensor(SensorData& data) {
-
-   data.pulseSensorValue = analogRead(PulseSensorPurplePin);
-  Signal = data.pulseSensorValue; // Use the stored pulse sensor value
-  currentBeatTime = millis(); // Get the current time.
+  #include <Wire.h>
+  #include <Adafruit_MLX90614.h>
+  #include <BluetoothSerial.h>
+  #include <Adafruit_MPU6050.h> 
+  #include <Adafruit_Sensor.h>
   
-  // If the signal is above the threshold and enough time has passed since the last beat
-  if (Signal > Threshold && (currentBeatTime - lastBeatTime) > 200) {
-    // Calculate the time interval between beats
-    int beatInterval = currentBeatTime - lastBeatTime;
+  #define PIN_VO 12
+  #define PIN_VBIAS 14
+  #define VDD 5.0
+  #define VREF 5.0
+  #define MAX_READ 1024
   
-    // Calculate heart rate in beats per minute (BPM)
-    beatsPerMinute = 60000 / beatInterval;
+  BluetoothSerial SerialBT;
+  Adafruit_MPU6050 mpu;
+  Adafruit_MLX90614 mlx = Adafruit_MLX90614();
+  const int PulseSensorPurplePin = 36;
   
-    // Store the current time as the last beat time
-    lastBeatTime = currentBeatTime;
+  int Signal;
+  int Threshold = 2000;
+  unsigned long lastBeatTime = 0;
+  unsigned long currentBeatTime;
+  int beatsPerMinute;
   
-    // Print the heart rate to the Serial Monitor
-    Serial.print("Heart Rate: ");
-    Serial.print(beatsPerMinute);
-    Serial.println(" BPM");
+  unsigned long startTime;
+  const unsigned long recordingDuration = 10 * 60 * 1000;
   
+  struct SensorData {
+    int pulseSensorValue;
+    float objectTempC;
+    float conductance;
+    float accelerationX;
+    float accelerationY;
+    float accelerationZ;
+    float rotationX;
+    float rotationY;
+    float rotationZ;
+    float temperature;
+  };
+  
+  
+  void readSensors(SensorData& data) {
+    // Read pulse sensor
+    data.pulseSensorValue = analogRead(PulseSensorPurplePin);
+    Signal = data.pulseSensorValue;
+    currentBeatTime = millis();
+    if (Signal > Threshold && (currentBeatTime - lastBeatTime) > 200) {
+      int beatInterval = currentBeatTime - lastBeatTime;
+      beatsPerMinute = 60000 / beatInterval;
+      lastBeatTime = currentBeatTime;
+      Serial.print("Heart Rate: ");
+      Serial.print(beatsPerMinute);
+      Serial.println(" BPM");
+    }
+  
+    // Read temperature sensor
+    data.objectTempC = mlx.readObjectTempC();
+    Serial.print("Temperature = ");
+    Serial.print(data.objectTempC);
+    Serial.println("°C");
+  
+    // Read accelerometer_gyro_temp
+    sensors_event_t a, g, temp;
+    mpu.getEvent(&a, &g, &temp);
+    data.accelerationX = a.acceleration.x;
+    data.accelerationY = a.acceleration.y;
+    data.accelerationZ = a.acceleration.z;
+    data.rotationX = g.gyro.x;
+    data.rotationY = g.gyro.y;
+    data.rotationZ = g.gyro.z;
+    data.temperature = temp.temperature;
+    Serial.print("Acceleration X: ");
+    Serial.print(a.acceleration.x);
+    Serial.print(", Y: ");
+    Serial.print(a.acceleration.y);
+    Serial.print(", Z: ");
+    Serial.print(a.acceleration.z);
+    Serial.println(" m/s^2");
+    Serial.print("Rotation X: ");
+    Serial.print(g.gyro.x);
+    Serial.print(", Y: ");
+    Serial.print(g.gyro.y);
+    Serial.print(", Z: ");
+    Serial.print(g.gyro.z);
+    Serial.println(" rad/s");
+    Serial.print("Temperature: ");
+    Serial.print(temp.temperature);
+    Serial.println(" degC");
+  
+    // Read EDA
+    float vo = analogRead(PIN_VO) * VREF / MAX_READ;
+    float vbias = analogRead(PIN_VBIAS) * VREF / MAX_READ;
+    data.conductance = ((vbias - vo) / (VDD - vbias)) * 1000;
+    Serial.print(" EDA: ");
+    Serial.println(data.conductance);
   }
   
- 
-}
-
-void readTemperatureSensor(SensorData& data) {
   
-  data.objectTempC = mlx.readObjectTempC();
-
-  Serial.print("Temperature = ");
-  Serial.print(data.objectTempC);
-  Serial.println("°C");
-
-}
-
-void readAccelerometer(SensorData& data) {
-/* Get new sensor events with the readings */
-  sensors_event_t a, g, temp;
-  mpu.getEvent(&a, &g, &temp);
-
-  /* Print out the values */
-  Serial.print("Acceleration X: ");
-  Serial.print(a.acceleration.x);
-  Serial.print(", Y: ");
-  Serial.print(a.acceleration.y);
-  Serial.print(", Z: ");
-  Serial.print(a.acceleration.z);
-  Serial.println(" m/s^2");
-
-  Serial.print("Rotation X: ");
-  Serial.print(g.gyro.x);
-  Serial.print(", Y: ");
-  Serial.print(g.gyro.y);
-  Serial.print(", Z: ");
-  Serial.print(g.gyro.z);
-  Serial.println(" rad/s");
-
-  Serial.print("Temperature: ");
-  Serial.print(temp.temperature);
-  Serial.println(" degC");
-
-  Serial.println("");
-}
-
-void readEDA(SensorData& data) {
-   float vo = analogRead(PIN_VO) * VREF / MAX_READ;
-  float vbias = analogRead(PIN_VBIAS) * VREF / MAX_READ;
-  // simple computation
-  float vdiff = abs(vo - vbias);
-  // conductance, formula from  Poh et al. A wearable sensor for unobtrusive, long-term assesment of electrodermal activity. IEEE Transactions on Biomedical Engineering
-  //float conductance = ((vbias - vo) / (VDD - vbias)) / 1000000;
-  // actually don't put the resistance, value too small for us
-  // NB: keep raw value to avoid rounding errors?
-  data.conductance = ((vbias - vo) / (VDD - vbias))*1000;
-  // even boost value for display
-  Serial.print(" EDA: ");
-  Serial.println(data.conductance);
-
-}
-
-
-void setup() {
-
-  pinMode(PIN_VO, INPUT);
-  pinMode(PIN_VBIAS, INPUT);
-
-
-  Serial.begin(115200);
-   SerialBT.begin("ESP32-Bluetooth"); // Bluetooth device name
-
-  Wire.begin();
-
-   if (!mpu.begin()) {
-    Serial.println("Failed to find MPU6050 chip");
-    while (1) {
-      delay(10);
+  void captureDataTask(void *parameter) {
+     SensorData *data = (SensorData*)parameter;
+    for (;;) {
+      readSensors(*data);
+      Serial.printf("Capture Data Task running on core %d\n", xPortGetCoreID());
+      vTaskDelay(1000 / portTICK_PERIOD_MS);
     }
   }
-  Serial.println("MPU6050 Found!");
-
-  if (!mlx.begin()) {
-    Serial.println("Error connecting to MLX sensor. Check wiring.");
-    while (1);
-  }
-}
-
-
-//mpu6050 config
-mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-  Serial.print("Accelerometer range set to: ");
-  switch (mpu.getAccelerometerRange()) {
-  case MPU6050_RANGE_2_G:
-    Serial.println("+-2G");
-    break;
-  case MPU6050_RANGE_4_G:
-    Serial.println("+-4G");
-    break;
-  case MPU6050_RANGE_8_G:
-    Serial.println("+-8G");
-    break;
-  case MPU6050_RANGE_16_G:
-    Serial.println("+-16G");
-    break;
-  }
-  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
-  Serial.print("Gyro range set to: ");
-  switch (mpu.getGyroRange()) {
-  case MPU6050_RANGE_250_DEG:
-    Serial.println("+- 250 deg/s");
-    break;
-  case MPU6050_RANGE_500_DEG:
-    Serial.println("+- 500 deg/s");
-    break;
-  case MPU6050_RANGE_1000_DEG:
-    Serial.println("+- 1000 deg/s");
-    break;
-  case MPU6050_RANGE_2000_DEG:
-    Serial.println("+- 2000 deg/s");
-    break;
-  }
-
-  mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
-  Serial.print("Filter bandwidth set to: ");
-  switch (mpu.getFilterBandwidth()) {
-  case MPU6050_BAND_260_HZ:
-    Serial.println("260 Hz");
-    break;
-  case MPU6050_BAND_184_HZ:
-    Serial.println("184 Hz");
-    break;
-  case MPU6050_BAND_94_HZ:
-    Serial.println("94 Hz");
-    break;
-  case MPU6050_BAND_44_HZ:
-    Serial.println("44 Hz");
-    break;
-  case MPU6050_BAND_21_HZ:
-    Serial.println("21 Hz");
-    break;
-  case MPU6050_BAND_10_HZ:
-    Serial.println("10 Hz");
-    break;
-  case MPU6050_BAND_5_HZ:
-    Serial.println("5 Hz");
-    break;
-  }
-
-  Serial.println("");
-
   
-void loop() {
-  SensorData data;
-
-  readPulseSensor(data);
-  readTemperatureSensor(data);
-  readAccelerometer(data);
-  readEDA(data);
-
- 
+  void bluetoothSendTask(void *parameter) {
+    SensorData *data = (SensorData*)parameter;
+    for (;;) {
+       // Send data via Bluetooth every 10 minutes
+    if (millis() - startTime >= recordingDuration) {
+      // Reset the start time
+      startTime = millis();
   
+      // Convert SensorData to a string
+      String dataString = "Heart Rate: " + String(data->pulseSensorValue) + " BPM\n"; // Use -> instead of dereferencing
+            dataString += "Temperature: " + String(data->objectTempC) + "°C\n";
+            dataString += "Acceleration X: " + String(data->accelerationX) + " m/s^2\n";
+            dataString += "Acceleration Y: " + String(data->accelerationY) + " m/s^2\n";
+            dataString += "Acceleration Z: " + String(data->accelerationZ) + " m/s^2\n";
+            dataString += "Rotation X: " + String(data->rotationX) + " rad/s\n";
+            dataString += "Rotation Y: " + String(data->rotationY) + " rad/s\n";
+            dataString += "Rotation Z: " + String(data->rotationZ) + " rad/s\n";
+            dataString += "Temperature: " + String(data->temperature) + " degC\n";
+            dataString += "EDA: " + String(data->conductance) + "\n";
+  
+      // Send data via Bluetooth
+      SerialBT.println(dataString);
+    }
+      Serial.printf("Bluetooth Send Task running on core %d\n", xPortGetCoreID());
+      vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+  }
+  
+  
+  
+  void setup() {
+    pinMode(PIN_VO, INPUT);
+    pinMode(PIN_VBIAS, INPUT);
+    Serial.begin(115200);
+    SerialBT.begin("ESP32-Bluetooth");
+    Wire.begin();
+    if (!mpu.begin()) {
+      Serial.println("Failed to find MPU6050 chip");
+      while (1) {
+        delay(10);
+      }
+    }
+    Serial.println("MPU6050 Found!");
+    if (!mlx.begin()) {
+      Serial.println("Error connecting to MLX sensor. Check wiring.");
+      while (1);
+    }
+  }
+  
+  void loop() {
+    SensorData data;
 
+        xTaskCreatePinnedToCore(
+      captureDataTask,  // Task function
+      "CaptureData",    // Name of the task
+      2000,             // Stack size of the task
+      data,             // Parameter of the task
+        1,                // Priority of the task
+      NULL,             // Task handle to keep track of created task
+      0); 
+  
+      xTaskCreatePinnedToCore(
+      bluetoothSendTask,  // Task function
+      "BluetoothSend",    // Name of the task
+      2000,               // Stack size of the task
+      NULL,               // Parameter of the task
+      1,                  // Priority of the task
+      NULL,               // Task handle to keep track of created task
+      1);                 // Core where the task should run
+      
+    delay(1000); // Adjust delay as needed
+  }
+  
    
-  delay(1000); // Adjust delay as needed
-}
+  
+  
