@@ -10,6 +10,7 @@ Retrieves accelerometer, gyroscope, and temperature data from MPU6050.
 Measures heart rate via a Pulse Sensor.
 Reads EDA values.
 Transmits consolidated sensor data over Bluetooth every 10 minutes.
+
 Setup:
 
 Hardware Requirements:
@@ -20,6 +21,7 @@ Pulse Sensor
 Software Requirements:
 Arduino IDE
 Necessary Arduino libraries listed in the requirements.txt file.
+
 Usage:
 
 Wire up all the sensors to the ESP32 as per their respective datasheets.
@@ -31,7 +33,9 @@ Pair a Bluetooth device with the ESP32 to receive sensor data at 10-minute inter
 Code Structure:
 Initialization: Sets up Serial communications, Bluetooth, and initializes the sensors.
 Main Loop: Reads data from all sensors, prints results to Serial, and sends data over Bluetooth at regular intervals.
+
 Future Work & Contributions:
+
 Contributors are encouraged to enhance the project by:
 
 Implementing the MySensors library for a cleaner structure.
