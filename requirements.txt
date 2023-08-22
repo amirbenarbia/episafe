@@ -1,0 +1,5 @@
+Wire: https://www.arduino.cc/en/Reference/Wire
+Adafruit_MLX90614: https://github.com/adafruit/Adafruit-MLX90614-Library
+BluetoothSerial: Included with ESP32 package in Arduino IDE
+Adafruit_MPU6050: https://github.com/adafruit/Adafruit_MPU6050
+Adafruit_Sensor: https://github.com/adafruit/Adafruit_Sensor
