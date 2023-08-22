@@ -10,6 +10,21 @@
 #define VREF 5.0
 #define MAX_READ 1024
 
+struct SensorData {
+  int pulseSensorValue;
+  float objectTempC;
+  float conductance;
+  float accelerationX;
+  float accelerationY;
+  float accelerationZ;
+  float rotationX;
+  float rotationY;
+  float rotationZ;
+  float temperature;
+};
+
+
+
 BluetoothSerial SerialBT;
 Adafruit_MPU6050 mpu;
 Adafruit_MLX90614 mlx = Adafruit_MLX90614();
@@ -23,23 +38,16 @@ unsigned long currentBeatTime;
 int beatsPerMinute;
 
 unsigned long startTime;
-const unsigned long recordingDuration = 5 * 60 * 1000; // 10 minutes in milliseconds
-const unsigned long dataInterval = 500; // Collect data every 1 second
+const unsigned long recordingDuration =  60 * 1000; // 10 minutes in milliseconds
+const unsigned long dataInterval = 250; // Collect data every 1 second
 const int maxDataPoints = recordingDuration / dataInterval;
+int dataCount = 0;
+SensorData dataBuffer[maxDataPoints];
+String dataString = "";
 
 
-struct SensorData {
-  int pulseSensorValue;
-  float objectTempC;
-  float conductance;
-  float accelerationX;
-  float accelerationY;
-  float accelerationZ;
-  float rotationX;
-  float rotationY;
-  float rotationZ;
-  float temperature;
-};
+
+
 
 void readSensors(SensorData& data)  {
   // Read pulse sensor
@@ -175,5 +183,5 @@ void setup() {
 }
 
 void loop() {
-  vTaskDelay(pdMS_TO_TICKS(1000));
+  vTaskDelay(pdMS_TO_TICKS(500));
 }
