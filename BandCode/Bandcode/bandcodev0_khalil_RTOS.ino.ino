@@ -4,11 +4,55 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 
-#define PIN_VO 12 
+
+enum ErrorType {
+  BT_DISCONNECTED,
+  SENSOR_INIT_FAIL,
+  // Add more errors here
+};
+struct SensorData;
+void showError(ErrorType error);
+
+
+#define PIN_VO 12
 #define PIN_VBIAS 14
 #define VDD 5.0
 #define VREF 5.0
 #define MAX_READ 1024
+#define LED_ERROR_PIN 15
+#define LED_Sent 15
+#define LED_collect 18
+
+void blinkLED(int ledPin, int blinkDuration = 500) {
+  pinMode(ledPin, OUTPUT);  // Set the LED pin as OUTPUT
+
+  digitalWrite(ledPin, HIGH);  // Turn ON the LED
+  delay(blinkDuration/2);        // Wait for the specified duration
+
+  digitalWrite(ledPin, LOW);  // Turn OFF the LED
+  delay(blinkDuration/2);   
+  digitalWrite(ledPin, HIGH);  // Turn ON the LED
+  delay(blinkDuration/2);        // Wait for the specified duration
+
+  digitalWrite(ledPin, LOW);  // Turn OFF the LED
+  delay(blinkDuration/2);    // Wait for the specified duration
+}
+
+//enum ErrorType;
+
+
+void showError(ErrorType error) {
+  switch (error) {
+    case BT_DISCONNECTED:
+      Serial.println("Bluetooth Disconnected!");
+      break;
+    case SENSOR_INIT_FAIL:
+      Serial.println("Sensor Initialization Failed!");
+      break;
+      // Add more error messages here
+  }
+  blinkLED(LED_ERROR_PIN, 500);  // Halt the system (optional)
+}
 
 struct SensorData {
   int pulseSensorValue;
@@ -32,24 +76,26 @@ const int PulseSensorPurplePin = 36;
 
 int Signal;
 int Threshold = 2000;
-int bluetoothDelayTime = 10000 ; 
+int bluetoothDelayTime = 10000;
 unsigned long lastBeatTime = 0;
 unsigned long currentBeatTime;
 int beatsPerMinute;
+int duration_collect=250; 
 
+int duration_sending= 1000 ; 
 unsigned long startTime;
-const unsigned long recordingDuration =  60 * 1000; // 10 minutes in milliseconds
-const unsigned long dataInterval = 250; // Collect data every 1 second
+const unsigned long recordingDuration = 60 * 1000;  // 10 minutes in milliseconds
+const unsigned long dataInterval = 250;             // Collect data every 1 second
 const int maxDataPoints = recordingDuration / dataInterval;
 int dataCount = 0;
 SensorData dataBuffer[maxDataPoints];
 String dataString = "";
+QueueHandle_t dataQueue;
 
 
 
 
-
-void readSensors(SensorData& data)  {
+void readSensors(SensorData& data) {
   // Read pulse sensor
   data.pulseSensorValue = analogRead(PulseSensorPurplePin);
   Signal = data.pulseSensorValue;
@@ -111,51 +157,55 @@ void readSensors(SensorData& data)  {
 }
 
 
-QueueHandle_t dataQueue;
 
-void sensorTask(void * parameter) {
-  while(1) {
+
+void sensorTask(void* parameter) {
+  while (1) {
     SensorData data;
     Serial.printf("--------------capture Data Task running on core %d----------------\n", xPortGetCoreID());
     readSensors(data);
-
+    blinkLED(LED_collect,duration_collect); 
     xQueueSend(dataQueue, &data, portMAX_DELAY);
     delay(1000);
   }
 }
 
-void bluetoothTask(void * parameter) {
+void bluetoothTask(void* parameter) {
   SensorData data;
-  while(1) {
-    if(xQueueReceive(dataQueue, &data, portMAX_DELAY)) {// Check if it's time to send data
-  if (millis() - startTime >= recordingDuration) {
-    // Reset the start time
-    startTime = millis();
-  
-dataString = ""; // Clear the dataString
+  while (1) {
+    if (xQueueReceive(dataQueue, &data, portMAX_DELAY)) {
+      if (!SerialBT.hasClient()) {
+        showError(BT_DISCONNECTED);  // This will halt the system, modify if you want a different behavior
+      }                              // Check if it's time to send data
+      if (millis() - startTime >= recordingDuration) {
+        // Reset the start time
+        startTime = millis();
+
+        dataString = "";  // Clear the dataString
         // Send collected data via Bluetooth
         Serial.printf("--------------Send Data Task running on core %d----------------\n", xPortGetCoreID());
-    for (int i = 0; i < dataCount; i++) {
 
-       dataString += "Heart Rate: " + String(dataBuffer[i].pulseSensorValue) + " BPM ,";
-       dataString += "Temp Corp: " + String(dataBuffer[i].objectTempC) + "°C ,";
-       dataString += "Acceleration X: " + String(dataBuffer[i].accelerationX) + " m/s^2 ,";
-       dataString += "Acceleration Y: " + String(dataBuffer[i].accelerationY) + " m/s^2 ,";
-       dataString += "Acceleration Z: " + String(dataBuffer[i].accelerationZ) + " m/s^2 ,";
-       dataString += "Rotation X: " + String(dataBuffer[i].rotationX) + " rad/s ,";
-       dataString += "Rotation Y: " + String(dataBuffer[i].rotationY) + " rad/s ,";
-       dataString += "Rotation Z: " + String(dataBuffer[i].rotationZ) + " rad/s ,";
-       dataString += "Temperature: " + String(dataBuffer[i].temperature) + "  degC ,";
-       dataString += "EDA: " + String(dataBuffer[i].conductance) + " \n";
-      SerialBT.print(dataString);
-      delay(50);
+        for (int i = 0; i < dataCount; i++) {
 
-      //Serial.println(sizeof(dataString));
-    }
-  
- // Reset data count and buffer
-     dataCount = 0;
-  }
+          dataString += "Heart Rate: " + String(dataBuffer[i].pulseSensorValue) + " BPM ,";
+          dataString += "Temp Corp: " + String(dataBuffer[i].objectTempC) + "°C ,";
+          dataString += "Acceleration X: " + String(dataBuffer[i].accelerationX) + " m/s^2 ,";
+          dataString += "Acceleration Y: " + String(dataBuffer[i].accelerationY) + " m/s^2 ,";
+          dataString += "Acceleration Z: " + String(dataBuffer[i].accelerationZ) + " m/s^2 ,";
+          dataString += "Rotation X: " + String(dataBuffer[i].rotationX) + " rad/s ,";
+          dataString += "Rotation Y: " + String(dataBuffer[i].rotationY) + " rad/s ,";
+          dataString += "Rotation Z: " + String(dataBuffer[i].rotationZ) + " rad/s ,";
+          dataString += "Temperature: " + String(dataBuffer[i].temperature) + "  degC ,";
+          dataString += "EDA: " + String(dataBuffer[i].conductance) + " \n";
+          SerialBT.print(dataString);
+          delay(50);
+
+          //Serial.println(sizeof(dataString));
+        }
+        blinkLED(LED_Sent,duration_sending); 
+        // Reset data count and buffer
+        dataCount = 0;
+      }
     }
   }
 }
@@ -165,18 +215,22 @@ void setup() {
   pinMode(PIN_VBIAS, INPUT);
   Serial.begin(115200);
   SerialBT.begin("ESP32-Bluetooth");
+  if (!SerialBT.hasClient()) {
+    showError(BT_DISCONNECTED);
+  }
+  digitalWrite(15, LOW);
+  digitalWrite(2, LOW);
   Wire.begin();
-  
+
   if (!mpu.begin()) {
-    while (1) {
-      delay(10);
-    }
+    showError(SENSOR_INIT_FAIL);
   }
-  
+
+  // Check if MLX90614 sensor initialized successfully
   if (!mlx.begin()) {
-    while (1);
+    showError(SENSOR_INIT_FAIL);
   }
-  
+
   dataQueue = xQueueCreate(100, sizeof(SensorData));
   xTaskCreatePinnedToCore(sensorTask, "SensorTask", 20000, NULL, 1, NULL, 0);
   xTaskCreatePinnedToCore(bluetoothTask, "BluetoothTask", 20000, NULL, 1, NULL, 1);
