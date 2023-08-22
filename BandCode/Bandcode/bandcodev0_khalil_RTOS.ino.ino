@@ -23,6 +23,10 @@ unsigned long currentBeatTime;
 int beatsPerMinute;
 
 unsigned long startTime;
+const unsigned long recordingDuration = 5 * 60 * 1000; // 10 minutes in milliseconds
+const unsigned long dataInterval = 500; // Collect data every 1 second
+const int maxDataPoints = recordingDuration / dataInterval;
+
 
 struct SensorData {
   int pulseSensorValue;
@@ -37,7 +41,8 @@ struct SensorData {
   float temperature;
 };
 
-void readSensors(SensorData& data) {
+void readSensors(SensorData& data)  {
+  // Read pulse sensor
   data.pulseSensorValue = analogRead(PulseSensorPurplePin);
   Signal = data.pulseSensorValue;
   currentBeatTime = millis();
@@ -45,9 +50,18 @@ void readSensors(SensorData& data) {
     int beatInterval = currentBeatTime - lastBeatTime;
     beatsPerMinute = 60000 / beatInterval;
     lastBeatTime = currentBeatTime;
+    Serial.print("Heart Rate: ");
+    Serial.print(beatsPerMinute);
+    Serial.println(" BPM");
   }
 
+  // Read temperature sensor
   data.objectTempC = mlx.readObjectTempC();
+  Serial.print("Temperature corp = ");
+  Serial.print(data.objectTempC);
+  Serial.println("°C");
+
+  // Read accelerometer_gyro_temp
   sensors_event_t a, g, temp;
   mpu.getEvent(&a, &g, &temp);
   data.accelerationX = a.acceleration.x;
@@ -57,18 +71,46 @@ void readSensors(SensorData& data) {
   data.rotationY = g.gyro.y;
   data.rotationZ = g.gyro.z;
   data.temperature = temp.temperature;
+  Serial.print("Acceleration X: ");
+  Serial.print(a.acceleration.x);
+  Serial.print(", Y: ");
+  Serial.print(a.acceleration.y);
+  Serial.print(", Z: ");
+  Serial.print(a.acceleration.z);
+  Serial.println(" m/s^2");
+  Serial.print("Rotation X: ");
+  Serial.print(g.gyro.x);
+  Serial.print(", Y: ");
+  Serial.print(g.gyro.y);
+  Serial.print(", Z: ");
+  Serial.print(g.gyro.z);
+  Serial.println(" rad/s");
+  Serial.print("Temperature: ");
+  Serial.print(temp.temperature);
+  Serial.println(" degC");
 
+  // Read EDA
   float vo = analogRead(PIN_VO) * VREF / MAX_READ;
   float vbias = analogRead(PIN_VBIAS) * VREF / MAX_READ;
   data.conductance = ((vbias - vo) / (VDD - vbias)) * 1000;
+  Serial.print(" EDA: ");
+  Serial.println(data.conductance);
+
+  if (dataCount < maxDataPoints) {
+    dataBuffer[dataCount] = data;
+    dataCount++;
+  }
 }
+
 
 QueueHandle_t dataQueue;
 
 void sensorTask(void * parameter) {
   while(1) {
     SensorData data;
+    Serial.printf("--------------capture Data Task running on core %d----------------\n", xPortGetCoreID());
     readSensors(data);
+
     xQueueSend(dataQueue, &data, portMAX_DELAY);
     delay(1000);
   }
@@ -77,19 +119,35 @@ void sensorTask(void * parameter) {
 void bluetoothTask(void * parameter) {
   SensorData data;
   while(1) {
-    if(xQueueReceive(dataQueue, &data, portMAX_DELAY)) {
-      String dataString = "Heart Rate: " + String(data.pulseSensorValue) + " BPM\n";
-      dataString += "Temperature: " + String(data.objectTempC) + "°C\n";
-      dataString += "Acceleration X: " + String(data.accelerationX) + " m/s^2\n";
-      dataString += "Acceleration Y: " + String(data.accelerationY) + " m/s^2\n";
-      dataString += "Acceleration Z: " + String(data.accelerationZ) + " m/s^2\n";
-      dataString += "Rotation X: " + String(data.rotationX) + " rad/s\n";
-      dataString += "Rotation Y: " + String(data.rotationY) + " rad/s\n";
-      dataString += "Rotation Z: " + String(data.rotationZ) + " rad/s\n";
-      dataString += "Temperature: " + String(data.temperature) + " degC\n";
-      dataString += "EDA: " + String(data.conductance) + "\n";
-      SerialBT.println(dataString);
-      delay(bluetoothDelayTime);
+    if(xQueueReceive(dataQueue, &data, portMAX_DELAY)) {// Check if it's time to send data
+  if (millis() - startTime >= recordingDuration) {
+    // Reset the start time
+    startTime = millis();
+  
+dataString = ""; // Clear the dataString
+        // Send collected data via Bluetooth
+        Serial.printf("--------------Send Data Task running on core %d----------------\n", xPortGetCoreID());
+    for (int i = 0; i < dataCount; i++) {
+
+       dataString += "Heart Rate: " + String(dataBuffer[i].pulseSensorValue) + " BPM ,";
+       dataString += "Temp Corp: " + String(dataBuffer[i].objectTempC) + "°C ,";
+       dataString += "Acceleration X: " + String(dataBuffer[i].accelerationX) + " m/s^2 ,";
+       dataString += "Acceleration Y: " + String(dataBuffer[i].accelerationY) + " m/s^2 ,";
+       dataString += "Acceleration Z: " + String(dataBuffer[i].accelerationZ) + " m/s^2 ,";
+       dataString += "Rotation X: " + String(dataBuffer[i].rotationX) + " rad/s ,";
+       dataString += "Rotation Y: " + String(dataBuffer[i].rotationY) + " rad/s ,";
+       dataString += "Rotation Z: " + String(dataBuffer[i].rotationZ) + " rad/s ,";
+       dataString += "Temperature: " + String(dataBuffer[i].temperature) + "  degC ,";
+       dataString += "EDA: " + String(dataBuffer[i].conductance) + " \n";
+      SerialBT.print(dataString);
+      delay(50);
+
+      //Serial.println(sizeof(dataString));
+    }
+  
+ // Reset data count and buffer
+     dataCount = 0;
+  }
     }
   }
 }
