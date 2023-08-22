@@ -27,15 +27,15 @@ void blinkLED(int ledPin, int blinkDuration = 500) {
   pinMode(ledPin, OUTPUT);  // Set the LED pin as OUTPUT
 
   digitalWrite(ledPin, HIGH);  // Turn ON the LED
-  delay(blinkDuration/2);        // Wait for the specified duration
+  delay(blinkDuration / 2);    // Wait for the specified duration
 
   digitalWrite(ledPin, LOW);  // Turn OFF the LED
-  delay(blinkDuration/2);   
+  delay(blinkDuration / 2);
   digitalWrite(ledPin, HIGH);  // Turn ON the LED
-  delay(blinkDuration/2);        // Wait for the specified duration
+  delay(blinkDuration / 2);    // Wait for the specified duration
 
   digitalWrite(ledPin, LOW);  // Turn OFF the LED
-  delay(blinkDuration/2);    // Wait for the specified duration
+  delay(blinkDuration / 2);   // Wait for the specified duration
 }
 
 //enum ErrorType;
@@ -59,7 +59,7 @@ struct SensorData {
   float objectTempC;
   float conductance;
   float accelerationX;
-  float accelerationY;
+  float accelerationY;                                                            
   float accelerationZ;
   float rotationX;
   float rotationY;
@@ -67,6 +67,20 @@ struct SensorData {
   float temperature;
 };
 
+String Query(SensorData dt) {
+  String data = "";
+  data += String(dt.pulseSensorValue) + ";";
+  data += String(dt.objectTempC) + ";";
+  data += String(dt.accelerationX) + ",";
+  data += String(dt.accelerationY) + ",";
+  data += String(dt.accelerationZ) + ";";
+  data += String(dt.rotationX) + ",";
+  data += String(dt.rotationY) + ",";
+  data += String(dt.rotationZ) + ";";
+  data += String(dt.temperature) + ";";
+  data += String(dt.conductance) + ";\n";
+  return data;
+}
 
 
 BluetoothSerial SerialBT;
@@ -80,9 +94,9 @@ int bluetoothDelayTime = 10000;
 unsigned long lastBeatTime = 0;
 unsigned long currentBeatTime;
 int beatsPerMinute;
-int duration_collect=250; 
+int duration_collect = 250;
 
-int duration_sending= 1000 ; 
+int duration_sending = 1000;
 unsigned long startTime;
 const unsigned long recordingDuration = 60 * 1000;  // 10 minutes in milliseconds
 const unsigned long dataInterval = 250;             // Collect data every 1 second
@@ -156,15 +170,12 @@ void readSensors(SensorData& data) {
   }
 }
 
-
-
-
 void sensorTask(void* parameter) {
   while (1) {
     SensorData data;
     Serial.printf("--------------capture Data Task running on core %d----------------\n", xPortGetCoreID());
     readSensors(data);
-    blinkLED(LED_collect,duration_collect); 
+    blinkLED(LED_collect, duration_collect);
     xQueueSend(dataQueue, &data, portMAX_DELAY);
     delay(1000);
   }
@@ -187,22 +198,12 @@ void bluetoothTask(void* parameter) {
 
         for (int i = 0; i < dataCount; i++) {
 
-          dataString += "Heart Rate: " + String(dataBuffer[i].pulseSensorValue) + " BPM ,";
-          dataString += "Temp Corp: " + String(dataBuffer[i].objectTempC) + "°C ,";
-          dataString += "Acceleration X: " + String(dataBuffer[i].accelerationX) + " m/s^2 ,";
-          dataString += "Acceleration Y: " + String(dataBuffer[i].accelerationY) + " m/s^2 ,";
-          dataString += "Acceleration Z: " + String(dataBuffer[i].accelerationZ) + " m/s^2 ,";
-          dataString += "Rotation X: " + String(dataBuffer[i].rotationX) + " rad/s ,";
-          dataString += "Rotation Y: " + String(dataBuffer[i].rotationY) + " rad/s ,";
-          dataString += "Rotation Z: " + String(dataBuffer[i].rotationZ) + " rad/s ,";
-          dataString += "Temperature: " + String(dataBuffer[i].temperature) + "  degC ,";
-          dataString += "EDA: " + String(dataBuffer[i].conductance) + " \n";
+          dataString = Query(dataBuffer[i]);
           SerialBT.print(dataString);
           delay(50);
-
           //Serial.println(sizeof(dataString));
         }
-        blinkLED(LED_Sent,duration_sending); 
+        blinkLED(LED_Sent, duration_sending);
         // Reset data count and buffer
         dataCount = 0;
       }
