@@ -2,52 +2,53 @@ ESP32 Sensor Data Collection and Bluetooth Transmission
 
 /Overview:
 
-This project integrates an ESP32 board to collect data from a range of sensors, such as temperature, acceleration, pulse rate, and electrodermal activity (EDA). Once collected, the data is then transmitted via Bluetooth. This README provides a structured walkthrough for setting up, understanding, and executing the project.
+This code is designed to work with the ESP32 board to collect and transmit various types of sensor data. It captures data such as heart rate, skin conductance, object temperature, and accelerometer-gyro data. It also has a Bluetooth functionality that allows the ESP32 to send data to a connected Bluetooth client.
 
 /Features:
 
-- Collects temperature readings from an MLX90614 infrared thermometer.
-- Retrieves accelerometer, gyroscope, and temperature data from an MPU6050 sensor.
-- Measures heart rate using a Pulse Sensor.
-- Reads EDA values through analog pins.
-- Transmits the consolidated sensor data over Bluetooth every 10 seconds.
+-Heart rate monitoring
+-Object temperature measurement
+-3-axis acceleration capture
+-3-axis rotation (gyro) capture
+-Ambient temperature reading
+-Skin conductance (EDA)
+-Data transmission over Bluetooth
 
 /Hardware Requirements:
 
-ESP32 development board
-Adafruit_MLX90614 (Infrared Thermometer)
-Adafruit_MPU6050 (Accelerometer & Gyroscope)
-Pulse Sensor
-Electrodes and resistors for EDA measurement
+-ESP32 board
+-MLX90614 Temperature Sensor
+-MPU6050 Accelerometer-Gyro Sensor
+-Pulse Sensor (Analog)
+-LEDs for status indication
 
 /Software Requirements:
 
-Arduino IDE
-Necessary Arduino libraries listed in the requirements.txt file.
+-Arduino IDE
+-Adafruit MLX90614 library
+-Adafruit MPU6050 library
+-Adafruit Unified Sensor library
+-BluetoothSerial library
+-Wire library
 
-/Usage:
+/Installation and Setup:
 
-- Wire up all the sensors to the ESP32 as per their respective datasheets.
-- Ensure all required libraries are installed. You can find the list in the requirements.txt file.
-- Open the provided Arduino code in the Arduino IDE.
-- Upload the code to the ESP32.
-- Open the Serial Monitor to view real-time sensor readings.
-- Pair a Bluetooth device with the ESP32 to receive the sensor data at 10-second intervals.
+-Install the Arduino IDE: Arduino IDE Download
+-Open the Arduino IDE and go to Sketch -> Include Library -> Manage Libraries.
+-Install the following libraries:
+  Adafruit MLX90614
+  Adafruit MPU6050
+  Adafruit Unified Sensor
+-Connect the hardware as per the pin configuration mentioned in the code.
+-Upload the code to the ESP32 board using the Arduino IDE.
+-Open the Serial Monitor for debugging information
 
-/Code Structure:
+/How to Run:
 
-- Initialization: Sets up Serial communications, Bluetooth, and initializes the sensors.
-- Sensor Task: Periodically reads data from all sensors.
-- Bluetooth Task: Transmits the sensor data over Bluetooth.
-- Main Loop: Executes other tasks, in this case, it's empty and delays for 1 second.
+-Power up the ESP32 board.
+-Make sure the Bluetooth client is connected.
+-The sensor data will be sent to the connected Bluetooth client at intervals.
 
-/Enhancements & Contributions:
-
-Contributors are welcome to further enhance the project by:
-
-- Implementing the MySensors library for a more streamlined code structure.
-- Adding more sensors or functionalities.
-- Improving data visualization or analysis.
-- Optimizing the code for energy efficiency or speed.
-- Implementing a mobile or web-based interface for real-time data visualization and analysis.
+/Contributing:
+Contributions, issues, and feature requests are welcome! and the process for submitting pull requests to us.
 
