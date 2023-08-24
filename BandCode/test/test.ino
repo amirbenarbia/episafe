@@ -3,12 +3,12 @@
 #include <BluetoothSerial.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
-
+//
 
 enum ErrorType {
   BT_DISCONNECTED,
   SENSOR_INIT_FAIL,
-  // Add more errors here
+  EDA_NEG,
 };
 struct SensorData;
 void showError(ErrorType error);
@@ -16,30 +16,53 @@ void showError(ErrorType error);
 
 #define PIN_VO 12
 #define PIN_VBIAS 14
+
 #define VDD 5.0
 #define VREF 5.0
 #define MAX_READ 1024
 #define LED_ERROR_PIN 15
 #define LED_Sent 15
 #define LED_collect 18
+#define EDA_pin 25
+
+
 
 void blinkLED(int ledPin, int blinkDuration = 500) {
   pinMode(ledPin, OUTPUT);  // Set the LED pin as OUTPUT
 
   digitalWrite(ledPin, HIGH);  // Turn ON the LED
-  delay(blinkDuration/2);        // Wait for the specified duration
+  delay(blinkDuration / 2);    // Wait for the specified duration
 
   digitalWrite(ledPin, LOW);  // Turn OFF the LED
-  delay(blinkDuration/2);   
+  delay(blinkDuration / 2);
   digitalWrite(ledPin, HIGH);  // Turn ON the LED
-  delay(blinkDuration/2);        // Wait for the specified duration
+  delay(blinkDuration / 2);    // Wait for the specified duration
 
   digitalWrite(ledPin, LOW);  // Turn OFF the LED
-  delay(blinkDuration/2);    // Wait for the specified duration
+  delay(blinkDuration / 2);   // Wait for the specified duration
 }
 
-//enum ErrorType;
 
+float read_eda(int pin) {
+  int sensorValue = 0;
+  int gsr_average = 0;
+  int human_resistance = 0;
+  int EDA_th_per_epch = 5;  //10 par defaut
+
+  long sum = 0;
+  for (int i = 0; i < EDA_th_per_epch; i++)  //Mittelwertbildung über 10 Werte
+  {
+    sensorValue = analogRead(pin);  //Auslesen des analogen Pins
+    sum += sensorValue;             //Summe der ausgelesenen Werte
+    delay(5);
+  }
+  gsr_average = sum / 10;
+
+  //Berechnung Hautwiderstand
+  human_resistance = ((4096 + 2 * gsr_average) * 10000) / (2048 - gsr_average);
+
+  return ((1.0 / human_resistance) * 1000000);
+}
 
 void showError(ErrorType error) {
   switch (error) {
@@ -49,6 +72,8 @@ void showError(ErrorType error) {
     case SENSOR_INIT_FAIL:
       Serial.println("Sensor Initialization Failed!");
       break;
+    case EDA_NEG:
+      Serial.println("EDA-conductance negative");
       // Add more error messages here
   }
   blinkLED(LED_ERROR_PIN, 500);  // Halt the system (optional)
@@ -65,26 +90,39 @@ struct SensorData {
   float rotationY;
   float rotationZ;
   float temperature;
+  float time;
 };
 
-
+String Query(SensorData dt) {
+  String data = "";
+  data += String(dt.time) + "/";
+  data += String(dt.pulseSensorValue) + ";";
+  data += String(dt.objectTempC) + ";";
+  data += String(dt.accelerationX) + ",";
+  data += String(dt.accelerationY) + ",";
+  data += String(dt.accelerationZ) + ";";
+  data += String(dt.rotationX) + ",";
+  data += String(dt.rotationY) + ",";
+  data += String(dt.rotationZ) + ";";
+  data += String(dt.temperature) + ";";
+  data += String(dt.conductance) + ";\n";
+  return data;
+}
 
 BluetoothSerial SerialBT;
 Adafruit_MPU6050 mpu;
 Adafruit_MLX90614 mlx = Adafruit_MLX90614();
 const int PulseSensorPurplePin = 36;
-
 int Signal;
 int Threshold = 2000;
 int bluetoothDelayTime = 10000;
 unsigned long lastBeatTime = 0;
 unsigned long currentBeatTime;
 int beatsPerMinute;
-int duration_collect=250; 
-
-int duration_sending= 1000 ; 
+int duration_collect = 250;
+int duration_sending = 1000;
 unsigned long startTime;
-const unsigned long recordingDuration = 60 * 1000;  // 10 minutes in milliseconds
+const unsigned long recordingDuration = 10* 60 * 1000;  // 10 minutes in milliseconds
 const unsigned long dataInterval = 250;             // Collect data every 1 second
 const int maxDataPoints = recordingDuration / dataInterval;
 int dataCount = 0;
@@ -100,6 +138,7 @@ void readSensors(SensorData& data) {
   data.pulseSensorValue = analogRead(PulseSensorPurplePin);
   Signal = data.pulseSensorValue;
   currentBeatTime = millis();
+
   if (Signal > Threshold && (currentBeatTime - lastBeatTime) > 200) {
     int beatInterval = currentBeatTime - lastBeatTime;
     beatsPerMinute = 60000 / beatInterval;
@@ -144,29 +183,29 @@ void readSensors(SensorData& data) {
   Serial.println(" degC");
 
   // Read EDA
-  float vo = analogRead(PIN_VO) * VREF / MAX_READ;
-  float vbias = analogRead(PIN_VBIAS) * VREF / MAX_READ;
-  data.conductance = ((vbias - vo) / (VDD - vbias)) * 1000;
-  Serial.print(" EDA: ");
-  Serial.println(data.conductance);
+  int x = read_eda(EDA_pin);
+  if (x >= 0) {
+    data.conductance = x;
+  } else
+    showError(EDA_NEG);
+  Serial.print("eda value="); 
+  Serial.println(x);
 
   if (dataCount < maxDataPoints) {
     dataBuffer[dataCount] = data;
     dataCount++;
   }
+  data.time = (float)(millis() - startTime) / (1000.0 * 60.0);  
 }
-
-
-
 
 void sensorTask(void* parameter) {
   while (1) {
     SensorData data;
     Serial.printf("--------------capture Data Task running on core %d----------------\n", xPortGetCoreID());
     readSensors(data);
-    blinkLED(LED_collect,duration_collect); 
+    blinkLED(LED_collect, duration_collect);
     xQueueSend(dataQueue, &data, portMAX_DELAY);
-    delay(1000);
+    delay(500);
   }
 }
 
@@ -187,22 +226,12 @@ void bluetoothTask(void* parameter) {
 
         for (int i = 0; i < dataCount; i++) {
 
-          dataString += "Heart Rate: " + String(dataBuffer[i].pulseSensorValue) + " BPM ,";
-          dataString += "Temp Corp: " + String(dataBuffer[i].objectTempC) + "°C ,";
-          dataString += "Acceleration X: " + String(dataBuffer[i].accelerationX) + " m/s^2 ,";
-          dataString += "Acceleration Y: " + String(dataBuffer[i].accelerationY) + " m/s^2 ,";
-          dataString += "Acceleration Z: " + String(dataBuffer[i].accelerationZ) + " m/s^2 ,";
-          dataString += "Rotation X: " + String(dataBuffer[i].rotationX) + " rad/s ,";
-          dataString += "Rotation Y: " + String(dataBuffer[i].rotationY) + " rad/s ,";
-          dataString += "Rotation Z: " + String(dataBuffer[i].rotationZ) + " rad/s ,";
-          dataString += "Temperature: " + String(dataBuffer[i].temperature) + "  degC ,";
-          dataString += "EDA: " + String(dataBuffer[i].conductance) + " \n";
+          dataString = Query(dataBuffer[i]);
           SerialBT.print(dataString);
           delay(50);
-
           //Serial.println(sizeof(dataString));
         }
-        blinkLED(LED_Sent,duration_sending); 
+        blinkLED(LED_Sent, duration_sending);
         // Reset data count and buffer
         dataCount = 0;
       }
@@ -213,6 +242,7 @@ void bluetoothTask(void* parameter) {
 void setup() {
   pinMode(PIN_VO, INPUT);
   pinMode(PIN_VBIAS, INPUT);
+  pinMode(EDA_pin, INPUT);
   Serial.begin(115200);
   SerialBT.begin("ESP32-Bluetooth");
   if (!SerialBT.hasClient()) {
