@@ -54,9 +54,8 @@ float read_eda(int pin) {
   {
     sensorValue = analogRead(pin);  //Auslesen des analogen Pins
     sum += sensorValue;             //Summe der ausgelesenen Werte
-    delay(5);
   }
-  gsr_average = sum / 10;
+  gsr_average = sum / EDA_th_per_epch ;
 
   //Berechnung Hautwiderstand
   human_resistance = ((4096 + 2 * gsr_average) * 10000) / (2048 - gsr_average);
@@ -67,14 +66,15 @@ float read_eda(int pin) {
 void showError(ErrorType error) {
   switch (error) {
     case BT_DISCONNECTED:
-      Serial.println("Bluetooth Disconnected!");
+      //Serial.println("Bluetooth Disconnected!");
       break;
     case SENSOR_INIT_FAIL:
-      Serial.println("Sensor Initialization Failed!");
+      //Serial.println("Sensor Initialization Failed!");
       break;
     case EDA_NEG:
-      Serial.println("EDA-conductance negative");
+      //Serial.println("EDA-conductance negative");
       // Add more error messages here
+      break ; 
   }
   blinkLED(LED_ERROR_PIN, 500);  // Halt the system (optional)
 }
@@ -122,9 +122,9 @@ int beatsPerMinute;
 int duration_collect = 250;
 int duration_sending = 1000;
 unsigned long startTime;
-const unsigned long recordingDuration = 10* 60 * 1000;  // 10 minutes in milliseconds
-const unsigned long dataInterval = 250;             // Collect data every 1 second
-const int maxDataPoints = recordingDuration / dataInterval;
+const unsigned long recordingDuration =  10*60 * 1000;  // 10 minutes in milliseconds
+const unsigned long dataInterval = 500;             // Collect data every 1 second
+const long maxDataPoints = recordingDuration / dataInterval;
 int dataCount = 0;
 SensorData dataBuffer[maxDataPoints];
 String dataString = "";
@@ -143,16 +143,16 @@ void readSensors(SensorData& data) {
     int beatInterval = currentBeatTime - lastBeatTime;
     beatsPerMinute = 60000 / beatInterval;
     lastBeatTime = currentBeatTime;
-    Serial.print("Heart Rate: ");
+    /*Serial.print("Heart Rate: ");
     Serial.print(beatsPerMinute);
-    Serial.println(" BPM");
+    Serial.println(" BPM");*/
   }
 
   // Read temperature sensor
   data.objectTempC = mlx.readObjectTempC();
-  Serial.print("Temperature corp = ");
+  /*Serial.print("Temperature corp = ");
   Serial.print(data.objectTempC);
-  Serial.println("°C");
+  Serial.println("°C");*/
 
   // Read accelerometer_gyro_temp
   sensors_event_t a, g, temp;
@@ -164,23 +164,7 @@ void readSensors(SensorData& data) {
   data.rotationY = g.gyro.y;
   data.rotationZ = g.gyro.z;
   data.temperature = temp.temperature;
-  Serial.print("Acceleration X: ");
-  Serial.print(a.acceleration.x);
-  Serial.print(", Y: ");
-  Serial.print(a.acceleration.y);
-  Serial.print(", Z: ");
-  Serial.print(a.acceleration.z);
-  Serial.println(" m/s^2");
-  Serial.print("Rotation X: ");
-  Serial.print(g.gyro.x);
-  Serial.print(", Y: ");
-  Serial.print(g.gyro.y);
-  Serial.print(", Z: ");
-  Serial.print(g.gyro.z);
-  Serial.println(" rad/s");
-  Serial.print("Temperature: ");
-  Serial.print(temp.temperature);
-  Serial.println(" degC");
+
 
   // Read EDA
   int x = read_eda(EDA_pin);
@@ -188,20 +172,21 @@ void readSensors(SensorData& data) {
     data.conductance = x;
   } else
     showError(EDA_NEG);
-  Serial.print("eda value="); 
-  Serial.println(x);
+  /*Serial.print("eda value="); 
+  Serial.println(x);*/
 
   if (dataCount < maxDataPoints) {
     dataBuffer[dataCount] = data;
     dataCount++;
   }
   data.time = (float)(millis() - startTime) / (1000.0 * 60.0);  
+  Serial.print(Query(data)); 
 }
 
 void sensorTask(void* parameter) {
   while (1) {
     SensorData data;
-    Serial.printf("--------------capture Data Task running on core %d----------------\n", xPortGetCoreID());
+    //Serial.printf("--------------capture Data Task running on core %d----------------\n", xPortGetCoreID());
     readSensors(data);
     blinkLED(LED_collect, duration_collect);
     xQueueSend(dataQueue, &data, portMAX_DELAY);
@@ -222,7 +207,7 @@ void bluetoothTask(void* parameter) {
 
         dataString = "";  // Clear the dataString
         // Send collected data via Bluetooth
-        Serial.printf("--------------Send Data Task running on core %d----------------\n", xPortGetCoreID());
+        //Serial.printf("--------------Send Data Task running on core %d----------------\n", xPortGetCoreID());
 
         for (int i = 0; i < dataCount; i++) {
 
@@ -261,9 +246,9 @@ void setup() {
     showError(SENSOR_INIT_FAIL);
   }
 
-  dataQueue = xQueueCreate(100, sizeof(SensorData));
-  xTaskCreatePinnedToCore(sensorTask, "SensorTask", 20000, NULL, 1, NULL, 0);
-  xTaskCreatePinnedToCore(bluetoothTask, "BluetoothTask", 20000, NULL, 1, NULL, 1);
+  dataQueue = xQueueCreate(50, sizeof(SensorData));
+  xTaskCreatePinnedToCore(sensorTask, "SensorTask", 2000, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(bluetoothTask, "BluetoothTask", 2000, NULL, 1, NULL, 1);
 }
 
 void loop() {
