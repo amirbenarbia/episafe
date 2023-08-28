@@ -7,6 +7,8 @@
 #include <BluetoothSerial.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
+#include <ArduinoJson.h>
+
 
 // Constants and Macros
 #define PIN_VO 12
@@ -25,10 +27,10 @@
 #define Threshold 2000
 #define DURATION_COLLECT 250
 #define DURATION_SENDING 1000
-#define RECORDING_DURATION 10*60 * 1000
+#define RECORDING_DURATION 5*60 * 1000
 #define DATA_INTERVAL 250
 #define MAX_DATA_POINTS RECORDING_DURATION / DATA_INTERVAL
-#define enableDebugOutput 1
+#define enableDebugOutput 0
 
 TaskHandle_t BluetoothTaskHandle = NULL;
 
@@ -48,8 +50,8 @@ struct SensorData {
   float accelerationY;
   float accelerationZ;
   float temperature;
-  float time;
-  
+  float timeStamp;
+  float batteryLevel;
 };
 
 
@@ -60,6 +62,7 @@ void readSensors(SensorData& data);
 void sensorTask(void* parameter);
 void bluetoothTask(void* parameter);
 void blinkLED(int ledPin, int blinkDuration, int);
+float readBatteryLevel(int pin);
 
 
 BluetoothSerial SerialBT;
@@ -71,6 +74,7 @@ int dataCount = 0;
 SensorData dataBuffer[MAX_DATA_POINTS];
 QueueHandle_t dataQueue;
 String dataString = "";
+int BATTERY_PIN=3 ; 
 
 void setup() {
   pinMode(PIN_VO, INPUT);
@@ -96,10 +100,12 @@ void showError(ErrorType error) {
     case BT_DISCONNECTED:
       if (enableDebugOutput)
         Serial.println("Bluetooth Disconnected!");
+         blinkLED(LED_ERROR_PIN, 300, 3);
       break;
     case SENSOR_INIT_FAIL:
       if (enableDebugOutput)
         Serial.println("Sensor Initialization Failed!");
+         blinkLED(LED_ERROR_PIN, 300, 3);
       break;
     case EDA_NEG:
       if (enableDebugOutput)
@@ -112,7 +118,7 @@ void showError(ErrorType error) {
       blinkLED(LED_ERROR_PIN, 150, 4);
       return;
   }
-  blinkLED(LED_ERROR_PIN, 300, 3);
+ 
 }
 
 float read_eda(int pin) {
@@ -134,13 +140,14 @@ float read_eda(int pin) {
 
 String Query(SensorData dt) {
   String data = "";
-  data += String(dt.time) + "/";
-  data += String(dt.pulseSensorValue) + ";";
-  data += String(dt.objectTempC) + ";";
-  data += String(dt.accelerationX) + ",";
-  data += String(dt.accelerationY) + ",";
-  data += String(dt.accelerationZ) + ";";
-  data += String(dt.temperature) + ";";
+  data += String(dt.timeStamp) + "// ";
+  data += String(dt.batteryLevel) + "// ";
+  data += String(dt.pulseSensorValue) + "; ";
+  data += String(dt.objectTempC) + "; ";
+  data += String(dt.accelerationX) + ", ";
+  data += String(dt.accelerationY) + ", ";
+  data += String(dt.accelerationZ) + "; ";
+  data += String(dt.temperature) + "; ";
   data += String(dt.conductance) + ";\n";
   return data;
 }
@@ -208,8 +215,16 @@ void readSensors(SensorData& data) {
     dataBuffer[dataCount] = data;
     dataCount++;
   }
-  data.time = (float)(millis() - startTime) / (1000.0 * 60.0);
+  data.timeStamp = (float)(millis() - startTime) / (1000.0 * 60.0);
   Serial.print(Query(data));
+
+  //battery
+  data.batteryLevel = readBatteryLevel(BATTERY_PIN);
+  if(enableDebugOutput) {
+    Serial.print("Battery Level: ");
+    Serial.print(data.batteryLevel);
+    Serial.println("%");
+  }
 }
 
 
@@ -242,12 +257,7 @@ void bluetoothTask(void* parameter) {
 
   SensorData data;
   while (1) {
-    Serial.print("///////////////////////////////////////////////////////////////////////////////\n");
     if (xQueueReceive(dataQueue, &data, portMAX_DELAY)) {
-       
-
-      
-
         dataString = "";
         if (enableDebugOutput)
           Serial.printf("--------------Send Data Task running on core %d----------------\n", xPortGetCoreID());
@@ -269,6 +279,18 @@ void bluetoothTask(void* parameter) {
   
   BluetoothTaskHandle = NULL;
   vTaskDelete(NULL);
+}
+
+float readBatteryLevel(int pin) {
+  pinMode(pin,INPUT); 
+  int raw = analogRead(pin);
+  // Convert the raw reading into voltage, assuming 3.3V reference
+  float voltage = (float)raw / 4095.0 * 3.3;
+  
+  // Convert voltage to percentage, assuming 3.3V is 100% and 0V is 0%
+  float percentage = (voltage / 3.3) * 100;
+  percentage = 33;  
+  return percentage;
 }
 
 
