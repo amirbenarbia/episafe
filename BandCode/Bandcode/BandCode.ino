@@ -1,5 +1,5 @@
 // json query + batterie + custom MAC
-// serveur ntp bluetooth frm smrtphn
+// serveur ntp bluetooth frm smrtphn + vibr
 
 
 #include <Wire.h>
@@ -27,11 +27,10 @@
 #define Threshold 2000
 #define DURATION_COLLECT 250
 #define DURATION_SENDING 1000
-#define RECORDING_DURATION 5*60 * 1000
+#define RECORDING_DURATION 60 * 1000
 #define DATA_INTERVAL 250
 #define MAX_DATA_POINTS RECORDING_DURATION / DATA_INTERVAL
 #define enableDebugOutput 0
-
 TaskHandle_t BluetoothTaskHandle = NULL;
 
 
@@ -139,18 +138,22 @@ float read_eda(int pin) {
 }
 
 String Query(SensorData dt) {
-  String data = "";
-  data += String(dt.timeStamp) + "// ";
-  data += String(dt.batteryLevel) + "// ";
-  data += String(dt.pulseSensorValue) + "; ";
-  data += String(dt.objectTempC) + "; ";
-  data += String(dt.accelerationX) + ", ";
-  data += String(dt.accelerationY) + ", ";
-  data += String(dt.accelerationZ) + "; ";
-  data += String(dt.temperature) + "; ";
-  data += String(dt.conductance) + ";\n";
-  return data;
+  StaticJsonDocument<200> doc;
+  doc["timeStamp"] = dt.timeStamp;
+  doc["pulseSensorValue"] = dt.pulseSensorValue;
+  doc["objectTempC"] = dt.objectTempC;
+  doc["accelerationX"] = dt.accelerationX;
+  doc["accelerationY"] = dt.accelerationY;
+  doc["accelerationZ"] = dt.accelerationZ;
+  doc["temperature"] = dt.temperature;
+  doc["conductance"] = dt.conductance;
+  doc["batteryLevel"] = dt.batteryLevel;
+
+  String json;
+  serializeJson(doc, json);
+  return json;
 }
+
 
 void readSensors(SensorData& data) {
 
@@ -216,8 +219,7 @@ void readSensors(SensorData& data) {
     dataCount++;
   }
   data.timeStamp = (float)(millis() - startTime) / (1000.0 * 60.0);
-  Serial.print(Query(data));
-
+  
   //battery
   data.batteryLevel = readBatteryLevel(BATTERY_PIN);
   if(enableDebugOutput) {
@@ -225,6 +227,7 @@ void readSensors(SensorData& data) {
     Serial.print(data.batteryLevel);
     Serial.println("%");
   }
+  Serial.print(".-"); 
 }
 
 
@@ -248,7 +251,7 @@ void sensorTask(void* parameter) {
         startTime = millis();
       }
       xQueueSend(dataQueue, &data, portMAX_DELAY);
-      delay(500);
+      delay(100);
     }
   }
 }
@@ -267,9 +270,9 @@ void bluetoothTask(void* parameter) {
         } else {
           for (int i = 0; i < dataCount; i++) {
 
-            dataString = Query(dataBuffer[i]);
-            SerialBT.print(dataString);
-            delay(50);
+            String jsonPayload = Query(dataBuffer[i]); 
+            Serial.println(jsonPayload) ;
+            SerialBT.println(jsonPayload); 
           }
           blinkLED(LED_Sent, DURATION_SENDING, 1);
           dataCount = 0;
