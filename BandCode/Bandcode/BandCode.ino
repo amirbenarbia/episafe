@@ -1,5 +1,5 @@
 // json query + batterie + custom MAC
-// serveur ntp bluetooth frm smrtphn + vibr
+// vibr
 
 
 #include <Wire.h>
@@ -10,7 +10,7 @@
 #include <ArduinoJson.h>
 
 
-// Constants and Macros
+
 #define PIN_VO 12
 #define PIN_VBIAS 14
 #define PulseSensorPurplePin 36
@@ -62,6 +62,7 @@ void sensorTask(void* parameter);
 void bluetoothTask(void* parameter);
 void blinkLED(int ledPin, int blinkDuration, int);
 float readBatteryLevel(int pin);
+float roundToOneDecimal(float num);
 
 
 BluetoothSerial SerialBT;
@@ -73,7 +74,7 @@ int dataCount = 0;
 SensorData dataBuffer[MAX_DATA_POINTS];
 QueueHandle_t dataQueue;
 String dataString = "";
-int BATTERY_PIN=3 ; 
+int BATTERY_PIN = 3;
 
 void setup() {
   pinMode(PIN_VO, INPUT);
@@ -99,12 +100,12 @@ void showError(ErrorType error) {
     case BT_DISCONNECTED:
       if (enableDebugOutput)
         Serial.println("Bluetooth Disconnected!");
-         blinkLED(LED_ERROR_PIN, 300, 3);
+      blinkLED(LED_ERROR_PIN, 300, 3);
       break;
     case SENSOR_INIT_FAIL:
       if (enableDebugOutput)
         Serial.println("Sensor Initialization Failed!");
-         blinkLED(LED_ERROR_PIN, 300, 3);
+      blinkLED(LED_ERROR_PIN, 300, 3);
       break;
     case EDA_NEG:
       if (enableDebugOutput)
@@ -117,7 +118,6 @@ void showError(ErrorType error) {
       blinkLED(LED_ERROR_PIN, 150, 4);
       return;
   }
- 
 }
 
 float read_eda(int pin) {
@@ -139,20 +139,21 @@ float read_eda(int pin) {
 
 String Query(SensorData dt) {
   StaticJsonDocument<200> doc;
-  doc["timeStamp"] = dt.timeStamp;
-  doc["pulseSensorValue"] = dt.pulseSensorValue;
-  doc["objectTempC"] = dt.objectTempC;
-  doc["accelerationX"] = dt.accelerationX;
-  doc["accelerationY"] = dt.accelerationY;
-  doc["accelerationZ"] = dt.accelerationZ;
-  doc["temperature"] = dt.temperature;
-  doc["conductance"] = dt.conductance;
-  doc["batteryLevel"] = dt.batteryLevel;
+  doc["timeStamp"] = roundToOneDecimal(dt.timeStamp);
+  doc["pulseSensorValue"] = roundToOneDecimal(dt.pulseSensorValue);
+  doc["objectTempC"] = roundToOneDecimal(dt.objectTempC);
+  doc["accelerationX"] = roundToOneDecimal(dt.accelerationX);
+  doc["accelerationY"] = roundToOneDecimal(dt.accelerationY);
+  doc["accelerationZ"] = roundToOneDecimal(dt.accelerationZ);
+  doc["temperature"] = roundToOneDecimal(dt.temperature);
+  doc["conductance"] = roundToOneDecimal(dt.conductance);
+  doc["batteryLevel"] = roundToOneDecimal(dt.batteryLevel);
 
   String json;
   serializeJson(doc, json);
   return json;
 }
+
 
 
 void readSensors(SensorData& data) {
@@ -219,15 +220,16 @@ void readSensors(SensorData& data) {
     dataCount++;
   }
   data.timeStamp = (float)(millis() - startTime) / (1000.0 * 60.0);
-  
+
   //battery
   data.batteryLevel = readBatteryLevel(BATTERY_PIN);
-  if(enableDebugOutput) {
+  if (enableDebugOutput) {
     Serial.print("Battery Level: ");
     Serial.print(data.batteryLevel);
     Serial.println("%");
   }
-  Serial.print(".-"); 
+  if (!enableDebugOutput)
+    Serial.print(".-");
 }
 
 
@@ -261,38 +263,38 @@ void bluetoothTask(void* parameter) {
   SensorData data;
   while (1) {
     if (xQueueReceive(dataQueue, &data, portMAX_DELAY)) {
-        dataString = "";
-        if (enableDebugOutput)
-          Serial.printf("--------------Send Data Task running on core %d----------------\n", xPortGetCoreID());
+      dataString = "";
+      if (enableDebugOutput)
+        Serial.printf("--------------Send Data Task running on core %d----------------\n", xPortGetCoreID());
 
-        if (!SerialBT.hasClient()) {
-          showError(BT_DISCONNECTED_WHILE_SENDING);  // This will halt the system, modify if you want a different behavior
-        } else {
-          for (int i = 0; i < dataCount; i++) {
+      if (!SerialBT.hasClient()) {
+        showError(BT_DISCONNECTED_WHILE_SENDING);  // This will halt the system, modify if you want a different behavior
+      } else {
+        for (int i = 0; i < dataCount; i++) {
 
-            String jsonPayload = Query(dataBuffer[i]); 
-            Serial.println(jsonPayload) ;
-            SerialBT.println(jsonPayload); 
-          }
-          blinkLED(LED_Sent, DURATION_SENDING, 1);
-          dataCount = 0;
+          String jsonPayload = Query(dataBuffer[i]);
+          Serial.println(jsonPayload);
+          SerialBT.println(jsonPayload);
         }
+        blinkLED(LED_Sent, DURATION_SENDING, 1);
+        dataCount = 0;
       }
     }
-  
+  }
+
   BluetoothTaskHandle = NULL;
   vTaskDelete(NULL);
 }
 
 float readBatteryLevel(int pin) {
-  pinMode(pin,INPUT); 
+  pinMode(pin, INPUT);
   int raw = analogRead(pin);
   // Convert the raw reading into voltage, assuming 3.3V reference
   float voltage = (float)raw / 4095.0 * 3.3;
-  
+
   // Convert voltage to percentage, assuming 3.3V is 100% and 0V is 0%
   float percentage = (voltage / 3.3) * 100;
-  percentage = 33;  
+  percentage = 33;
   return percentage;
 }
 
@@ -306,4 +308,9 @@ void blinkLED(int ledPin, int blinkDuration = 500, int time = 2) {
     digitalWrite(ledPin, LOW);
     delay(blinkDuration / 2);
   }
+}
+
+
+float roundToOneDecimal(float num) {
+  return round(num * 10.0) / 10.0;
 }
