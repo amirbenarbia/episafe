@@ -8,6 +8,10 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <ArduinoJson.h>
+extern "C" {
+  #include "esp_bt_device.h"
+}
+
 
 
 
@@ -75,6 +79,7 @@ SensorData dataBuffer[MAX_DATA_POINTS];
 QueueHandle_t dataQueue;
 String dataString = "";
 int BATTERY_PIN = 3;
+uint8_t mac[6];
 
 void setup() {
   pinMode(PIN_VO, INPUT);
@@ -88,7 +93,9 @@ void setup() {
   if (!mlx.begin()) showError(SENSOR_INIT_FAIL);
 
   dataQueue = xQueueCreate(50, sizeof(SensorData));
+   esp_read_mac(mac, ESP_MAC_BT);
   xTaskCreatePinnedToCore(sensorTask, "SensorTask", 2000, NULL, 1, NULL, 0);
+  
 }
 
 void loop() {
@@ -139,6 +146,8 @@ float read_eda(int pin) {
 
 String Query(SensorData dt) {
   StaticJsonDocument<200> doc;
+  doc["Episafe"] = String(mac[0], HEX) + ":" + String(mac[1], HEX) + ":" + String(mac[2], HEX) + ":" +
+               String(mac[3], HEX) + ":" + String(mac[4], HEX) + ":" + String(mac[5], HEX);
   doc["timeStamp"] = roundToOneDecimal(dt.timeStamp);
   doc["pulseSensorValue"] = roundToOneDecimal(dt.pulseSensorValue);
   doc["objectTempC"] = roundToOneDecimal(dt.objectTempC);
