@@ -8,6 +8,7 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <ArduinoJson.h>
+
 extern "C" {
 #include "esp_bt_device.h"
 }
