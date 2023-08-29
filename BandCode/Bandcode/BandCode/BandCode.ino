@@ -1,7 +1,7 @@
 // json query + batterie + custom MAC
 // vibr
 
-
+#include <OneButton.h>
 #include <Wire.h>
 #include <Adafruit_MLX90614.h>
 #include <BluetoothSerial.h>
@@ -14,6 +14,8 @@ extern "C" {
 
 
 
+#define b1 
+#define b2 
 
 #define PIN_VO 12
 #define PIN_VBIAS 14
