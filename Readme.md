@@ -88,6 +88,4 @@ If you wish to contribute, please fork the repository and submit a pull request.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
-
 Feel free to clone, modify, and use the code as per your requirements. If you find any issues or have feature requests, please open an issue or submit a pull request.
