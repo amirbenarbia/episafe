@@ -1,54 +1,93 @@
-ESP32 Sensor Data Collection and Bluetooth Transmission
+# Episafe Sensor Monitoring System
 
-/Overview:
+## Overview
 
-This code is designed to work with the ESP32 board to collect and transmit various types of sensor data. It captures data such as heart rate, skin conductance, object temperature, and accelerometer-gyro data. It also has a Bluetooth functionality that allows the ESP32 to send data to a connected Bluetooth client.
+The Episafe Sensor Monitoring System is an embedded IoT system aimed at providing real-time sensor data collection and Bluetooth-based transmission to a host device. Built on the ESP32 microcontroller, the system captures various physiological data points including heart rate, body temperature, acceleration, conductance, and more. With a built-in battery monitoring system, it offers a highly portable and efficient platform for health and safety applications.
 
-/Features:
+## Table of Contents
 
--Heart rate monitoring
--Object temperature measurement
--3-axis acceleration capture
--3-axis rotation (gyro) capture
--Ambient temperature reading
--Skin conductance (EDA)
--Data transmission over Bluetooth
+- [Overview](#overview)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Hardware Setup](#hardware-setup)
+- [Usage](#usage)
+- [Data Points](#data-points)
+- [Error Handling](#error-handling)
+- [Contributing](#contributing)
+- [License](#license)
 
-/Hardware Requirements:
+## Prerequisites
 
--ESP32 board
--MLX90614 Temperature Sensor
--MPU6050 Accelerometer-Gyro Sensor
--Pulse Sensor (Analog)
--LEDs for status indication
+- ESP32 Development Board
+- Arduino IDE (version >= 1.8.10)
+- Pulse Sensor
+- Adafruit MPU6050 Accelerometer and Gyroscope
+- Adafruit MLX90614 Temperature Sensor
+- Additional components (LEDs, buttons, etc.)
 
-/Software Requirements:
+## Installation
 
--Arduino IDE
--Adafruit MLX90614 library
--Adafruit MPU6050 library
--Adafruit Unified Sensor library
--BluetoothSerial library
--Wire library
+1. **Clone the repository**
 
-/Installation and Setup:
+   ```
+   git clone https://github.com/yourusername/Episafe.git
+   ```
 
--Install the Arduino IDE: Arduino IDE Download
--Open the Arduino IDE and go to Sketch -> Include Library -> Manage Libraries.
--Install the following libraries:
-  Adafruit MLX90614
-  Adafruit MPU6050
-  Adafruit Unified Sensor
--Connect the hardware as per the pin configuration mentioned in the code.
--Upload the code to the ESP32 board using the Arduino IDE.
--Open the Serial Monitor for debugging information
+2. **Open Arduino IDE**
 
-/How to Run:
+3. **Install Required Libraries**
 
--Power up the ESP32 board.
--Make sure the Bluetooth client is connected.
--The sensor data will be sent to the connected Bluetooth client at intervals.
+   Navigate to `Sketch > Include Library > Manage Libraries...`, then search and install the following libraries:
+   - OneButton
+   - Adafruit_MLX90614
+   - Adafruit_MPU6050
+   - BluetoothSerial
+   - ArduinoJson
 
-/Contributing:
-Contributions, issues, and feature requests are welcome! and the process for submitting pull requests to us.
+4. **Select Board and Port**
 
+   Choose `ESP32` from `Tools > Board` and select the COM Port the board is connected to.
+
+5. **Compile and Upload**
+
+   Compile the code by clicking the checkmark button, and then upload it to your ESP32 by clicking the right-arrow button.
+
+## Hardware Setup
+
+Follow the hardware schematic [here](link_to_schematic) to connect all the components.
+
+## Usage
+
+The system starts in the "Data Capture" state, where it begins to read the sensor data. The data is stored in an internal buffer until it reaches the specified limit, at which point it moves to the "Data Transmission" state.
+
+### Buttons
+
+- **Button 1**: 
+  - Single Click: Manually trigger sensor reading
+  - Long Press: Trigger "Crisis" state
+
+- **Button 2**: 
+  - Double Click: Report false alarm
+  - Long Press: Reset the system
+
+## Data Points
+
+- Heart Rate (BPM)
+- Body Temperature (°C)
+- Acceleration (m/s^2)
+- Conductance (µS)
+- Battery Level (%)
+
+## Error Handling
+
+The system has built-in error handling mechanisms to deal with common issues such as Bluetooth disconnection, sensor failures, and more. Errors are indicated by specific LED patterns.
+
+## Contributing
+
+If you wish to contribute, please fork the repository and submit a pull request. For major changes, please open an issue to discuss the proposed changes.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
+
+Feel free to clone, modify, and use the code as per your requirements. If you find any issues or have feature requests, please open an issue or submit a pull request.
