@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 value_last = []
 
 # Read the file line by line
-with open(r"C:\Users\MSI\Desktop\epilife\khalil\episafe\BandCode\Data\3.txt", "r") as file:
+with open(r"C:\Users\MSI\Desktop\Episafe_F\episafe_khalil\BandCode\Data\3.txt", "r") as file:
     for line in file:
         parts = line.strip().split('/')
         if len(parts) < 2:

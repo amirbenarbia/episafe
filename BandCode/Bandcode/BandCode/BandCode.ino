@@ -8,9 +8,11 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <ArduinoJson.h>
+
 extern "C" {
 #include "esp_bt_device.h"
 }
+#define vib 33
 #define pb1 2
 #define pb2 4
 #define PIN_VO 12
@@ -27,11 +29,11 @@ extern "C" {
 #define Threshold 2000
 #define DURATION_COLLECT 250
 #define DURATION_SENDING 1000
-#define RECORDING_DURATION 60 * 1000
+#define RECORDING_DURATION 20 * 1000
 #define DATA_INTERVAL 250
 #define MAX_DATA_POINTS RECORDING_DURATION / DATA_INTERVAL
 
-int enableDebugOutput=1; 
+int enableDebugOutput = 1;
 TaskHandle_t BluetoothTaskHandle = NULL;
 TaskHandle_t ButtonTaskHandle = NULL;
 
@@ -87,6 +89,7 @@ void setup() {
   pinMode(PIN_VO, INPUT);
   pinMode(PIN_VBIAS, INPUT);
   pinMode(EDA_pin, INPUT);
+  pinMode(vib, OUTPUT);
   setupButtons();
   SerialBT.begin("Episafe");
 
@@ -98,13 +101,13 @@ void setup() {
   esp_read_mac(mac, ESP_MAC_BT);
   xTaskCreatePinnedToCore(sensorTask, "SensorTask", 2000, NULL, 1, NULL, 0);
   xTaskCreatePinnedToCore(
-    buttonTask,        // Task function
-    "ButtonTask",      // Name of task
-    2000,              // Stack size of task
-    NULL,              // Parameter of the task
-    2,                 // Priority of the task (High priority)
-    &ButtonTaskHandle, // Task handle to keep track of created task
-    1                  // Core where the task should run
+    buttonTask,         // Task function
+    "ButtonTask",       // Name of task
+    2000,               // Stack size of task
+    NULL,               // Parameter of the task
+    2,                  // Priority of the task (High priority)
+    &ButtonTaskHandle,  // Task handle to keep track of created task
+    1                   // Core where the task should run
   );
 }
 void loop() {
@@ -154,7 +157,7 @@ float read_eda(int pin) {
 }
 String Query(SensorData dt) {
   StaticJsonDocument<200> doc;
-  doc["ID"] = "EPISAFE/"+String(mac[0], HEX) + ":" + String(mac[1], HEX) + ":" + String(mac[2], HEX) + ":" + String(mac[3], HEX) + ":" + String(mac[4], HEX) + ":" + String(mac[5], HEX);
+  doc["ID"] = "EPISAFE/" + String(mac[0], HEX) + ":" + String(mac[1], HEX) + ":" + String(mac[2], HEX) + ":" + String(mac[3], HEX) + ":" + String(mac[4], HEX) + ":" + String(mac[5], HEX);
   doc["timeStamp"] = roundToOneDecimal(dt.timeStamp);
   doc["pulseSensorValue"] = roundToOneDecimal(dt.pulseSensorValue);
   doc["objectTempC"] = roundToOneDecimal(dt.objectTempC);
@@ -259,6 +262,7 @@ void sensorTask(void* parameter) {
           1);
         startTime = millis();
       }
+      delay(50);
       xQueueSend(dataQueue, &data, portMAX_DELAY);
       delay(100);
     }
@@ -281,6 +285,7 @@ void bluetoothTask(void* parameter) {
           String jsonPayload = Query(dataBuffer[i]);
           Serial.println(jsonPayload);
           SerialBT.println(jsonPayload);
+          delay(60);
         }
         blinkLED(LED_Sent, DURATION_SENDING, 1);
         dataCount = 0;
@@ -324,9 +329,9 @@ void crise() {
 void reset() {
   Serial.println("reset");
 }
-void debug(){
-  Serial.println("debug"); 
-  enableDebugOutput= !enableDebugOutput; 
+void debug() {
+  Serial.println("debug");
+  enableDebugOutput = !enableDebugOutput;
 }
 void false_alarm() {
   Serial.println("False_alarme");
@@ -348,11 +353,19 @@ void setupButtons() {
 
   b2.setClickMs(300);
 }
-void buttonTask(void *parameter){
-  while(1){
+void buttonTask(void* parameter) {
+  while (1) {
     b1.tick();
     b2.tick();
     // The delay time could be modified according to how responsive you need the buttons to be.
-    vTaskDelay(pdMS_TO_TICKS(50)); 
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
+}
+void vibr(int dur, int x) {
+
+  for (int i = 0; i < x; i++) {
+    digitalWrite(vib, 1);
+    delay(dur);
+    digitalWrite(vib, 0);
   }
 }
