@@ -15,16 +15,12 @@ extern "C" {
 #define vib 33
 #define pb1 2
 #define pb2 4
-#define PIN_VO 12
-#define PIN_VBIAS 14
-#define PulseSensorPurplePin 36
+#define PulseSensorPurplePin 32
 #define EDA_pin 25
 #define LED_ERROR_PIN 15
 #define LED_Sent 15
 #define LED_collect 18
 #define EDA_TH_PER_EPOCH 5
-#define VDD 5.0
-#define VREF 5.0
 #define MAX_READ 1024
 #define Threshold 2000
 #define DURATION_COLLECT 250
@@ -86,8 +82,6 @@ uint8_t mac[6];
 
 void setup() {
   Serial.begin(115200);
-  pinMode(PIN_VO, INPUT);
-  pinMode(PIN_VBIAS, INPUT);
   pinMode(EDA_pin, INPUT);
   pinMode(vib, OUTPUT);
   setupButtons();
