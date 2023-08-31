@@ -15,16 +15,12 @@ extern "C" {
 #define vib 33
 #define pb1 2
 #define pb2 4
-#define PIN_VO 12
-#define PIN_VBIAS 14
 #define PulseSensorPurplePin 32
 #define EDA_pin 25
 #define LED_ERROR_PIN 15
 #define LED_Sent 15
 #define LED_collect 18
 #define EDA_TH_PER_EPOCH 5
-#define VDD 5.0
-#define VREF 5.0
 #define MAX_READ 1024
 #define Threshold 2000
 #define DURATION_COLLECT 250
@@ -85,10 +81,11 @@ int BATTERY_PIN = 3;
 uint8_t mac[6];
 
 void setup() {
-  Serial.begin(230400);
 
-  pinMode(PIN_VO, INPUT);
-  pinMode(PIN_VBIAS, INPUT);
+
+
+  Serial.begin(115200);
+
   pinMode(EDA_pin, INPUT);
   pinMode(vib, OUTPUT);
   setupButtons();
@@ -369,7 +366,6 @@ void vibr(int dur, int x) {
     digitalWrite(vib, 0);
   }
 }
-
 int check_bl_cnx() {
   if (SerialBT.hasClient())
     return 1;
@@ -382,3 +378,4 @@ void check_sensors() {
   if (!mpu.begin()) showError(SENSOR_INIT_FAIL);
   if (!mlx.begin()) showError(SENSOR_INIT_FAIL);
 }
+
