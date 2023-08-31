@@ -1,5 +1,3 @@
-// json query + batterie + custom MAC
-// vibr
 
 #include <OneButton.h>
 #include <Wire.h>
@@ -12,13 +10,14 @@
 extern "C" {
 #include "esp_bt_device.h"
 }
-#define vib 33
+
+#define vib 19
 #define pb1 2
 #define pb2 4
 #define PulseSensorPurplePin 32
 #define EDA_pin 25
-#define LED_ERROR_PIN 15
-#define LED_Sent 15
+#define LED_ERROR_PIN 5
+#define LED_Sent 5
 #define LED_collect 18
 #define EDA_TH_PER_EPOCH 5
 #define MAX_READ 1024
@@ -29,7 +28,7 @@ extern "C" {
 #define DATA_INTERVAL 250
 #define MAX_DATA_POINTS RECORDING_DURATION / DATA_INTERVAL
 
-int enableDebugOutput = 1;
+int enableDebugOutput = 0;
 TaskHandle_t BluetoothTaskHandle = NULL;
 TaskHandle_t ButtonTaskHandle = NULL;
 
@@ -59,6 +58,8 @@ struct SensorData {
   float batteryLevel;
 };
 
+
+
 void showError(ErrorType error);
 float read_eda(int pin);
 String Query(SensorData dt);
@@ -81,18 +82,14 @@ int BATTERY_PIN = 3;
 uint8_t mac[6];
 
 void setup() {
-
-
-
   Serial.begin(115200);
-
   pinMode(EDA_pin, INPUT);
   pinMode(vib, OUTPUT);
-  setupButtons();
+  setupButtons(); //push buttons
   mlx.begin();
   mpu.begin();
   SerialBT.begin("Episafe");
-  dataQueue = xQueueCreate(50, sizeof(SensorData));
+  dataQueue = xQueueCreate(5, sizeof(SensorData));
   esp_read_mac(mac, ESP_MAC_BT);
   xTaskCreatePinnedToCore(sensorTask, "SensorTask", 2000, NULL, 1, NULL, 0);
   xTaskCreatePinnedToCore(
@@ -110,28 +107,25 @@ void loop() {
   b2.tick();
   vTaskDelay(pdMS_TO_TICKS(500));
 }
+
 void showError(ErrorType error) {
   switch (error) {
     case BT_DISCONNECTED:
-      
         Serial.println("Bluetooth Disconnected!");
       blinkLED(LED_ERROR_PIN, 300, 3);
       break;
     case SENSOR_INIT_FAIL:
-      
         Serial.println("Sensor Initialization Failed!");
       blinkLED(LED_ERROR_PIN, 300, 3);
       break;
     case EDA_NEG:
-      
         Serial.println("EDA-conductance negative");
       blinkLED(LED_ERROR_PIN, 150, 2);
-      return;
+      break;
     case BT_DISCONNECTED_WHILE_SENDING:
-      
         Serial.println("FAILED TO SEND..");
       blinkLED(LED_ERROR_PIN, 150, 4);
-      return;
+      break;
   }
 }
 float read_eda(int pin) {
@@ -235,12 +229,14 @@ void readSensors(SensorData& data) {
     dataBuffer[dataCount] = data;
     dataCount++;
   }
-  data.timeStamp = (float)(millis() - startTime) / (1000.0 * 60.0);
+  data.timeStamp = (float)(millis() - startTime) ; 
 
 
   if (!enableDebugOutput)
     Serial.print(".-");
+
 }
+
 void sensorTask(void* parameter) {
   while (1) {
     SensorData data;
@@ -250,26 +246,22 @@ void sensorTask(void* parameter) {
     blinkLED(LED_collect, DURATION_COLLECT, 1);
     if (millis() - startTime >= RECORDING_DURATION) {
       if (BluetoothTaskHandle == NULL) {
-        xTaskCreatePinnedToCore(
-          bluetoothTask,
-          "BluetoothTask",
-          2000,
-          NULL,
-          1,
-          &BluetoothTaskHandle,
-          1);
+        xTaskCreatePinnedToCore(bluetoothTask,"BluetoothTask",2000,NULL,1,&BluetoothTaskHandle,1);
         startTime = millis();
       }
-      delay(50);
       xQueueSend(dataQueue, &data, portMAX_DELAY);
-      delay(100);
+      vTaskDelay(pdMS_TO_TICKS(100));
     }
   }
 }
-void bluetoothTask(void* parameter) {
 
+void bluetoothTask(void* parameter) {
   SensorData data;
+  bool allDataSent = false;  // Flag to track if all data has been sent
+
   while (1) {
+    // Reset the flag when entering the loop
+    allDataSent = false;
 
     if (xQueueReceive(dataQueue, &data, portMAX_DELAY)) {
       dataString = "";
@@ -282,10 +274,19 @@ void bluetoothTask(void* parameter) {
           String jsonPayload = Query(dataBuffer[i]);
           Serial.println(jsonPayload);
           SerialBT.println(jsonPayload);
-          delay(60);
+          delay(20);
+
+          // Check if this is the last data point to be sent
+          if (i == dataCount - 1) {
+            allDataSent = true;
+          }
         }
-        blinkLED(LED_Sent, DURATION_SENDING, 1);
-        dataCount = 0;
+        if (allDataSent) { // Exit task only if all data is sent
+          blinkLED(LED_Sent, DURATION_SENDING, 1);
+          dataCount = 0;
+          xQueueReset(dataQueue);
+          break; // Exiting the while loop
+        }
       }
     }
   }
@@ -293,6 +294,7 @@ void bluetoothTask(void* parameter) {
   BluetoothTaskHandle = NULL;
   vTaskDelete(NULL);
 }
+
 float readBatteryLevel(int pin) {
   pinMode(pin, INPUT);
   int raw = analogRead(pin);
@@ -325,6 +327,7 @@ void crise() {
 }
 void reset() {
   Serial.println("reset");
+  ESP.restart();
 }
 void debug() {
   Serial.println("debug");
@@ -346,7 +349,7 @@ void setupButtons() {
   b2.attachClick(debug);
 
   b1.setLongPressIntervalMs(1000);
-  b2.setLongPressIntervalMs(2500);
+  b2.setLongPressIntervalMs(3500);
 
   b2.setClickMs(300);
 }
@@ -354,8 +357,7 @@ void buttonTask(void* parameter) {
   while (1) {
     b1.tick();
     b2.tick();
-    // The delay time could be modified according to how responsive you need the buttons to be.
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(pdMS_TO_TICKS(20));
   }
 }
 void vibr(int dur, int x) {
