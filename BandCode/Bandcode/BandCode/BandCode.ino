@@ -17,7 +17,7 @@ extern "C" {
 #define pb2 4
 #define PIN_VO 12
 #define PIN_VBIAS 14
-#define PulseSensorPurplePin 36
+#define PulseSensorPurplePin 32
 #define EDA_pin 25
 #define LED_ERROR_PIN 15
 #define LED_Sent 15
@@ -85,18 +85,16 @@ int BATTERY_PIN = 3;
 uint8_t mac[6];
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(230400);
+
   pinMode(PIN_VO, INPUT);
   pinMode(PIN_VBIAS, INPUT);
   pinMode(EDA_pin, INPUT);
   pinMode(vib, OUTPUT);
   setupButtons();
+  mlx.begin();
+  mpu.begin();
   SerialBT.begin("Episafe");
-
-  if (!SerialBT.hasClient()) showError(BT_DISCONNECTED);
-  if (!mpu.begin()) showError(SENSOR_INIT_FAIL);
-  if (!mlx.begin()) showError(SENSOR_INIT_FAIL);
-
   dataQueue = xQueueCreate(50, sizeof(SensorData));
   esp_read_mac(mac, ESP_MAC_BT);
   xTaskCreatePinnedToCore(sensorTask, "SensorTask", 2000, NULL, 1, NULL, 0);
@@ -118,22 +116,22 @@ void loop() {
 void showError(ErrorType error) {
   switch (error) {
     case BT_DISCONNECTED:
-      if (enableDebugOutput)
+      
         Serial.println("Bluetooth Disconnected!");
       blinkLED(LED_ERROR_PIN, 300, 3);
       break;
     case SENSOR_INIT_FAIL:
-      if (enableDebugOutput)
+      
         Serial.println("Sensor Initialization Failed!");
       blinkLED(LED_ERROR_PIN, 300, 3);
       break;
     case EDA_NEG:
-      if (enableDebugOutput)
+      
         Serial.println("EDA-conductance negative");
       blinkLED(LED_ERROR_PIN, 150, 2);
       return;
     case BT_DISCONNECTED_WHILE_SENDING:
-      if (enableDebugOutput)
+      
         Serial.println("FAILED TO SEND..");
       blinkLED(LED_ERROR_PIN, 150, 4);
       return;
@@ -176,7 +174,7 @@ void readSensors(SensorData& data) {
   data.pulseSensorValue = analogRead(PulseSensorPurplePin);
   Signal = data.pulseSensorValue;
   currentBeatTime = millis();
-
+  check_sensors(); 
   if (Signal > Threshold && (currentBeatTime - lastBeatTime) > 200) {
     int beatInterval = currentBeatTime - lastBeatTime;
     beatsPerMinute = 60000 / beatInterval;
@@ -185,6 +183,7 @@ void readSensors(SensorData& data) {
       Serial.print("Heart Rate: ");
       Serial.print(beatsPerMinute);
       Serial.println(" BPM");
+      delay(50);
     }
   }
 
@@ -220,19 +219,12 @@ void readSensors(SensorData& data) {
   int x = read_eda(EDA_pin);
   if (x >= 0) {
     data.conductance = x;
+    if (enableDebugOutput) {
+      Serial.print("eda value=");
+      Serial.println(x);
+    }
   } else
     showError(EDA_NEG);
-  if (enableDebugOutput) {
-    Serial.print("eda value=");
-    Serial.println(x);
-  }
-  //---------
-  if (dataCount < MAX_DATA_POINTS) {
-    dataBuffer[dataCount] = data;
-    dataCount++;
-  }
-  data.timeStamp = (float)(millis() - startTime) / (1000.0 * 60.0);
-
   //battery
   data.batteryLevel = readBatteryLevel(BATTERY_PIN);
   if (enableDebugOutput) {
@@ -240,6 +232,15 @@ void readSensors(SensorData& data) {
     Serial.print(data.batteryLevel);
     Serial.println("%");
   }
+
+  //---------
+  if (dataCount < MAX_DATA_POINTS) {
+    dataBuffer[dataCount] = data;
+    dataCount++;
+  }
+  data.timeStamp = (float)(millis() - startTime) / (1000.0 * 60.0);
+
+
   if (!enableDebugOutput)
     Serial.print(".-");
 }
@@ -272,14 +273,13 @@ void bluetoothTask(void* parameter) {
 
   SensorData data;
   while (1) {
+
     if (xQueueReceive(dataQueue, &data, portMAX_DELAY)) {
       dataString = "";
       if (enableDebugOutput)
         Serial.printf("--------------Send Data Task running on core %d----------------\n", xPortGetCoreID());
 
-      if (!SerialBT.hasClient()) {
-        showError(BT_DISCONNECTED_WHILE_SENDING);  // This will halt the system, modify if you want a different behavior
-      } else {
+      if (check_bl_cnx()) {
         for (int i = 0; i < dataCount; i++) {
 
           String jsonPayload = Query(dataBuffer[i]);
@@ -368,4 +368,17 @@ void vibr(int dur, int x) {
     delay(dur);
     digitalWrite(vib, 0);
   }
+}
+
+int check_bl_cnx() {
+  if (SerialBT.hasClient())
+    return 1;
+  else
+    showError(BT_DISCONNECTED);
+  delay(100);
+  return 0;
+}
+void check_sensors() {
+  if (!mpu.begin()) showError(SENSOR_INIT_FAIL);
+  if (!mlx.begin()) showError(SENSOR_INIT_FAIL);
 }
