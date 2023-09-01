@@ -24,7 +24,7 @@ extern "C" {
 #define MAX_READ 1024
 #define Threshold 2000
 #define DURATION_COLLECT 250
-#define DURATION_SENDING 1000
+#define DURATION_SENDING 1500
 #define RECORDING_DURATION 20 * 1000
 #define DATA_INTERVAL 250
 #define MAX_DATA_POINTS RECORDING_DURATION / DATA_INTERVAL
@@ -68,13 +68,20 @@ void bluetoothTask(void* parameter);
 void blinkLED(int ledPin, int blinkDuration, int);
 float readBatteryLevel(int pin);
 float roundToOneDecimal(float num);
+void  readHeartRateSensor(SensorData& data); 
+void readTemperatureSensor(SensorData& data); 
+void readAccelerometer(SensorData& data); 
+void readEDA(SensorData& data); 
+  
 BluetoothSerial SerialBT;
 Adafruit_MPU6050 mpu;
 Adafruit_MLX90614 mlx = Adafruit_MLX90614();
 int Signal, beatsPerMinute;
 unsigned long lastBeatTime = 0, currentBeatTime, startTime;
 int dataCount = 0;
+
 SensorData dataBuffer[MAX_DATA_POINTS];
+
 QueueHandle_t dataQueue;
 String dataString = "";
 int BATTERY_PIN = 3;
@@ -168,60 +175,17 @@ String Query(SensorData dt) {
 }
 void readSensors(SensorData& data) {
   //HR
-  data.pulseSensorValue = analogRead(PulseSensorPurplePin);
-  Signal = data.pulseSensorValue;
-  currentBeatTime = millis();
-  check_sensors(); 
-  if (Signal > Threshold && (currentBeatTime - lastBeatTime) > 200) {
-    int beatInterval = currentBeatTime - lastBeatTime;
-    beatsPerMinute = 60000 / beatInterval;
-    lastBeatTime = currentBeatTime;
-    if (enableDebugOutput) {
-      Serial.print("Heart Rate: ");
-      Serial.print(beatsPerMinute);
-      Serial.println(" BPM");
-      delay(50);
-    }
-  }
+  readHeartRateSensor(SensorData& data); 
 
   //TMPC
-  data.objectTempC = mlx.readObjectTempC();
-  if (enableDebugOutput) {
-    Serial.print("Temperature corp = ");
-    Serial.print(data.objectTempC);
-    Serial.println("°C");
-  }
+  readTemperatureSensor(SensorData& data); 
 
   //ACC
-  sensors_event_t a, g, temp;
-  mpu.getEvent(&a, &g, &temp);
-  data.accelerationX = a.acceleration.x;
-  data.accelerationY = a.acceleration.y;
-  data.accelerationZ = a.acceleration.z;
-  data.temperature = temp.temperature;
-  if (enableDebugOutput) {
-    Serial.print("Acceleration X: ");
-    Serial.print(a.acceleration.x);
-    Serial.print(", Y: ");
-    Serial.print(a.acceleration.y);
-    Serial.print(", Z: ");
-    Serial.print(a.acceleration.z);
-    Serial.println(" m/s^2");
-    Serial.print("Temperature: ");
-    Serial.print(temp.temperature);
-    Serial.println(" degC");
-  }
+  readAccelerometer(SensorData& data); 
 
   //EDA
-  int x = read_eda(EDA_pin);
-  if (x >= 0) {
-    data.conductance = x;
-    if (enableDebugOutput) {
-      Serial.print("eda value=");
-      Serial.println(x);
-    }
-  } else
-    showError(EDA_NEG);
+  readEDA(SensorData& data); 
+
   //battery
   data.batteryLevel = readBatteryLevel(BATTERY_PIN);
   if (enableDebugOutput) {
@@ -282,7 +246,21 @@ void bluetoothTask(void* parameter) {
           String jsonPayload = Query(dataBuffer[i]);
           Serial.println(jsonPayload);
           SerialBT.println(jsonPayload);
-          delay(60);
+
+          delay(20);
+
+          // Check if this is the last data point to be sent
+          if (i == dataCount - 1) {
+            allDataSent = true;
+          }
+        }
+        if (allDataSent) { // Exit task only if all data is sent
+          blinkLED(LED_collect, DURATION_SENDING*2, 2);
+          blinkLED(LED_Sent, DURATION_SENDING*2, 2);
+          dataCount = 0;
+          xQueueReset(dataQueue);
+          break; // Exiting the while loop
+
         }
         blinkLED(LED_Sent, DURATION_SENDING, 1);
         dataCount = 0;
@@ -377,5 +355,70 @@ int check_bl_cnx() {
 void check_sensors() {
   if (!mpu.begin()) showError(SENSOR_INIT_FAIL);
   if (!mlx.begin()) showError(SENSOR_INIT_FAIL);
+}
+
+void readHeartRateSensor(SensorData& data) {
+  data.pulseSensorValue = analogRead(PulseSensorPurplePin);
+  Signal = data.pulseSensorValue;
+  currentBeatTime = millis();
+
+  if (Signal > Threshold && (currentBeatTime - lastBeatTime) > 200) {
+    int beatInterval = currentBeatTime - lastBeatTime;
+    beatsPerMinute = 60000 / beatInterval;
+    lastBeatTime = currentBeatTime;
+    data.pulseSensorValue = beatsPerMinute ; 
+    if (enableDebugOutput) {
+      Serial.print("Heart Rate: ");
+      Serial.print(beatsPerMinute);
+      Serial.println(" BPM");
+      delay(50);
+    }
+  }
+}
+
+void readTemperatureSensor(SensorData& data) {
+  data.objectTempC = mlx.readObjectTempC();
+  if (enableDebugOutput) {
+    Serial.print("Temperature corp = ");
+    Serial.print(data.objectTempC);
+    Serial.println("°C");
+  }
+}
+
+void readAccelerometer(SensorData& data) {
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+
+  data.accelerationX = a.acceleration.x;
+  data.accelerationY = a.acceleration.y;
+  data.accelerationZ = a.acceleration.z;
+  data.temperature = temp.temperature;
+
+  if (enableDebugOutput) {
+    Serial.print("Acceleration X: ");
+    Serial.print(a.acceleration.x);
+    Serial.print(", Y: ");
+    Serial.print(a.acceleration.y);
+    Serial.print(", Z: ");
+    Serial.print(a.acceleration.z);
+    Serial.println(" m/s^2");
+
+    Serial.print("Temperature: ");
+    Serial.print(temp.temperature);
+    Serial.println(" degC");
+  }
+}
+
+void readEDA(SensorData& data) {
+  int x = read_eda(EDA_pin);
+  if (x >= 0) {
+    data.conductance = x;
+    if (enableDebugOutput) {
+      Serial.print("eda value=");
+      Serial.println(x);
+    }
+  } else {
+    showError(EDA_NEG);
+  }
 }
 
