@@ -13,7 +13,7 @@ extern "C" {
 
 #define vib 19
 #define pb1 2
-#define pb2 4
+//#define pb2 4
 #define PulseSensorPurplePin 32
 #define EDA_pin 25
 #define LED_ERROR_PIN 5
@@ -37,11 +37,11 @@ OneButton b1 = OneButton(
   false,  // Button is active high
   false   // Disable internal pull-up resistor
 );
-OneButton b2 = OneButton(
+/*OneButton b2 = OneButton(
   pb2,    // Input pin for the button
   false,  // Button is active high
   false   // Disable internal pull-up resistor
-);
+);*/
 enum ErrorType { BT_DISCONNECTED,
                  BT_DISCONNECTED_WHILE_SENDING,
                  SENSOR_INIT_FAIL,
@@ -98,20 +98,11 @@ void setup() {
   SerialBT.begin("Episafe");
   dataQueue = xQueueCreate(5, sizeof(SensorData));
   esp_read_mac(mac, ESP_MAC_BT);
-  xTaskCreatePinnedToCore(sensorTask, "SensorTask", 2000, NULL, 1, NULL, 0);
-  xTaskCreatePinnedToCore(
-    buttonTask,         // Task function
-    "ButtonTask",       // Name of task
-    2000,               // Stack size of task
-    NULL,               // Parameter of the task
-    2,                  // Priority of the task (High priority)
-    &ButtonTaskHandle,  // Task handle to keep track of created task
-    1                   // Core where the task should run
-  );
+  xTaskCreatePinnedToCore(sensorTask, "SensorTask", 30000, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(buttonTask,"ButtonTask",30000,NULL,2,&ButtonTaskHandle,1);
 }
 void loop() {
   b1.tick();
-  b2.tick();
   vTaskDelay(pdMS_TO_TICKS(500));
 }
 
@@ -152,41 +143,40 @@ float read_eda(int pin) {
   return ((1.0 / human_resistance) * 1000000);
 }
 String Query(SensorData dt) {
-  StaticJsonDocument<200> doc;
-  doc["ID"] = "EPISAFE/" + String(mac[0], HEX) + ":" + String(mac[1], HEX) + ":" + String(mac[2], HEX) + ":" + String(mac[3], HEX) + ":" + String(mac[4], HEX) + ":" + String(mac[5], HEX);
-  doc["timeStamp"] = roundToOneDecimal(dt.timeStamp);
-  doc["pulseSensorValue"] = roundToOneDecimal(dt.pulseSensorValue);
-  doc["objectTempC"] = roundToOneDecimal(dt.objectTempC);
-  doc["accelerationX"] = roundToOneDecimal(dt.accelerationX);
-  doc["accelerationY"] = roundToOneDecimal(dt.accelerationY);
-  doc["accelerationZ"] = roundToOneDecimal(dt.accelerationZ);
-  doc["temperature"] = roundToOneDecimal(dt.temperature);
-  doc["conductance"] = roundToOneDecimal(dt.conductance);
-  doc["batteryLevel"] = roundToOneDecimal(dt.batteryLevel);
-  String json;
-  serializeJson(doc, json);
-  return json;
+  String result;
+
+  result += "EPISAFE/";
+  result += String(mac[0], HEX) + ":" + String(mac[1], HEX) + ":" + String(mac[2], HEX) +String(mac[3], HEX) + ":" + String(mac[4], HEX) + ":" + String(mac[5], HEX) + ",";
+  result += String(roundToOneDecimal(dt.timeStamp)) + ",";
+  result += String(roundToOneDecimal(dt.pulseSensorValue)) + ",";
+  result += String(roundToOneDecimal(dt.objectTempC)) + ",";
+  result += String(roundToOneDecimal(dt.accelerationX)) + ",";
+  result += String(roundToOneDecimal(dt.accelerationY)) + ",";
+  result += String(roundToOneDecimal(dt.accelerationZ)) + ",";
+  result += String(roundToOneDecimal(dt.temperature)) + ",";
+  result += String(roundToOneDecimal(dt.conductance)) + ",";
+  result += String(roundToOneDecimal(dt.batteryLevel));
+
+  result += "#";
+
+  return result;
 }
+
 void readSensors(SensorData& data) {
   //HR
-  readHeartRateSensor(SensorData& data); 
+  readHeartRateSensor(data); 
 
   //TMPC
-  readTemperatureSensor(SensorData& data); 
+  readTemperatureSensor(data); 
 
   //ACC
-  readAccelerometer(SensorData& data); 
+  readAccelerometer(data); 
 
   //EDA
-  readEDA(SensorData& data); 
+  readEDA(data); 
 
   //battery
-  data.batteryLevel = readBatteryLevel(BATTERY_PIN);
-  if (enableDebugOutput) {
-    Serial.print("Battery Level: ");
-    Serial.print(data.batteryLevel);
-    Serial.println("%");
-  }
+  read_batt_lvl(data);   
 
   //---------
   if (dataCount < MAX_DATA_POINTS) {
@@ -233,12 +223,13 @@ void bluetoothTask(void* parameter) {
         Serial.printf("--------------Send Data Task running on core %d----------------\n", xPortGetCoreID());
 
       if (check_bl_cnx()) {
+        SerialBT.println(dataCount); 
         for (int i = 0; i < dataCount; i++) {
 
-          String jsonPayload = Query(dataBuffer[i]);
-          Serial.println(jsonPayload);
-          SerialBT.println(jsonPayload);
-          delay(20);
+          String load = Query(dataBuffer[i]);
+          Serial.println(load);
+          SerialBT.println(load);
+          delay(10);
 
           // Check if this is the last data point to be sent
           if (i == dataCount - 1) {
@@ -285,44 +276,38 @@ void blinkLED(int ledPin, int blinkDuration = 500, int time = 2) {
 float roundToOneDecimal(float num) {
   return round(num * 10.0) / 10.0;
 }
-void trig_sensor() {
+/*void trig_sensor() {
   Serial.println("trig_senor");
-}
+}*/
 void crise() {
   Serial.println("crise");
+  vibr(200,3); 
 }
-void reset() {
+/*void reset() {
   Serial.println("reset");
   ESP.restart();
-}
+}*/
 void debug() {
   Serial.println("debug");
   enableDebugOutput = !enableDebugOutput;
 }
 void false_alarm() {
   Serial.println("False_alarme");
+  vibr(150,1); 
 }
 void setupButtons() {
 
   pinMode(pb1, OUTPUT);
-  pinMode(pb2, OUTPUT);
 
-  b1.attachClick(trig_sensor);
+  b1.attachClick(debug);
   b1.attachDuringLongPress(crise);
-
-  b2.attachDuringLongPress(reset);
-  b2.attachDoubleClick(false_alarm);
-  b2.attachClick(debug);
-
-  b1.setLongPressIntervalMs(1000);
-  b2.setLongPressIntervalMs(3500);
-
-  b2.setClickMs(300);
+  b1.attachDoubleClick(false_alarm);
+  b1.setLongPressIntervalMs(3000);
+  b1.setClickMs(300);
 }
 void buttonTask(void* parameter) {
   while (1) {
     b1.tick();
-    b2.tick();
     vTaskDelay(pdMS_TO_TICKS(20));
   }
 }
@@ -412,3 +397,11 @@ void readEDA(SensorData& data) {
   }
 }
 
+void read_batt_lvl(SensorData& data){
+  data.batteryLevel = readBatteryLevel(BATTERY_PIN);
+  if (enableDebugOutput) {
+    Serial.print("Battery Level: ");
+    Serial.print(data.batteryLevel);
+    Serial.println("%");
+  }
+}
