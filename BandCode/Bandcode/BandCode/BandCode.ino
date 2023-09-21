@@ -27,10 +27,17 @@ extern "C" {
 #define RECORDING_DURATION 20 * 1000
 #define DATA_INTERVAL 250
 #define MAX_DATA_POINTS RECORDING_DURATION / DATA_INTERVAL
+#define CRISIS_WINDOW_TIME 30000  //(30 secondes)
 
+SemaphoreHandle_t xSemaphore = NULL;
 int enableDebugOutput = 0;
 TaskHandle_t BluetoothTaskHandle = NULL;
 TaskHandle_t ButtonTaskHandle = NULL;
+
+TaskHandle_t BluetoothReceiveTaskHandle = NULL;
+volatile bool isCrisisTriggered = false;
+volatile bool isFalseAlarm = false;
+
 
 OneButton b1 = OneButton(
   pb1,    // Input pin for the button
@@ -69,11 +76,11 @@ void bluetoothTask(void* parameter);
 void blinkLED(int ledPin, int blinkDuration, int);
 float readBatteryLevel(int pin);
 float roundToOneDecimal(float num);
-void  readHeartRateSensor(SensorData& data); 
-void readTemperatureSensor(SensorData& data); 
-void readAccelerometer(SensorData& data); 
-void readEDA(SensorData& data); 
-  
+void readHeartRateSensor(SensorData& data);
+void readTemperatureSensor(SensorData& data);
+void readAccelerometer(SensorData& data);
+void readEDA(SensorData& data);
+
 BluetoothSerial SerialBT;
 Adafruit_MPU6050 mpu;
 Adafruit_MLX90614 mlx = Adafruit_MLX90614();
@@ -90,38 +97,39 @@ uint8_t mac[6];
 
 void setup() {
   Serial.begin(115200);
+  xSemaphore = xSemaphoreCreateBinary();
   pinMode(EDA_pin, INPUT);
   pinMode(vib, OUTPUT);
-  setupButtons(); //push buttons
+  setupButtons();  //push buttons
   mlx.begin();
   mpu.begin();
   SerialBT.begin("Episafe");
   dataQueue = xQueueCreate(5, sizeof(SensorData));
   esp_read_mac(mac, ESP_MAC_BT);
   xTaskCreatePinnedToCore(sensorTask, "SensorTask", 30000, NULL, 1, NULL, 0);
-  xTaskCreatePinnedToCore(buttonTask,"ButtonTask",30000,NULL,2,&ButtonTaskHandle,1);
+  xTaskCreatePinnedToCore(buttonTask, "ButtonTask", 30000, NULL, 2, &ButtonTaskHandle, 1);
+  xTaskCreatePinnedToCore(bluetoothReceiveTask, "BluetoothReceiveTask", 30000, NULL, 3, &BluetoothReceiveTaskHandle, 1);
 }
 void loop() {
   b1.tick();
   vTaskDelay(pdMS_TO_TICKS(500));
 }
-
 void showError(ErrorType error) {
   switch (error) {
     case BT_DISCONNECTED:
-        Serial.println("Bluetooth Disconnected!");
+      Serial.println("Bluetooth Disconnected!");
       blinkLED(LED_ERROR_PIN, 300, 3);
       break;
     case SENSOR_INIT_FAIL:
-        Serial.println("Sensor Initialization Failed!");
+      Serial.println("Sensor Initialization Failed!");
       blinkLED(LED_ERROR_PIN, 300, 3);
       break;
     case EDA_NEG:
-        Serial.println("EDA-conductance negative");
+      Serial.println("EDA-conductance negative");
       blinkLED(LED_ERROR_PIN, 150, 2);
       break;
     case BT_DISCONNECTED_WHILE_SENDING:
-        Serial.println("FAILED TO SEND..");
+      Serial.println("FAILED TO SEND..");
       blinkLED(LED_ERROR_PIN, 150, 4);
       break;
   }
@@ -146,7 +154,7 @@ String Query(SensorData dt) {
   String result;
 
   result += "EPISAFE/";
-  result += String(mac[0], HEX) + ":" + String(mac[1], HEX) + ":" + String(mac[2], HEX) +String(mac[3], HEX) + ":" + String(mac[4], HEX) + ":" + String(mac[5], HEX) + ",";
+  result += String(mac[0], HEX) + ":" + String(mac[1], HEX) + ":" + String(mac[2], HEX) + String(mac[3], HEX) + ":" + String(mac[4], HEX) + ":" + String(mac[5], HEX) + ",";
   result += String(roundToOneDecimal(dt.timeStamp)) + ",";
   result += String(roundToOneDecimal(dt.pulseSensorValue)) + ",";
   result += String(roundToOneDecimal(dt.objectTempC)) + ",";
@@ -164,31 +172,59 @@ String Query(SensorData dt) {
 
 void readSensors(SensorData& data) {
   //HR
-  readHeartRateSensor(data); 
+  readHeartRateSensor(data);
 
   //TMPC
-  readTemperatureSensor(data); 
+  readTemperatureSensor(data);
 
   //ACC
-  readAccelerometer(data); 
+  readAccelerometer(data);
 
   //EDA
-  readEDA(data); 
+  readEDA(data);
 
   //battery
-  read_batt_lvl(data);   
+  read_batt_lvl(data);
 
   //---------
   if (dataCount < MAX_DATA_POINTS) {
-    dataBuffer[dataCount] = data;
-    dataCount++;
+    dataBuffer[dataCount++] = data;
+  } else {
+    dataCount = 0;
   }
-  data.timeStamp = (float)(millis() - startTime) ; 
+
+  data.timeStamp = (float)(millis() - startTime);
 
 
   if (!enableDebugOutput)
     Serial.print(".-");
+}
 
+void bluetoothReceiveTask(void* parameter) {
+  while (1) {
+    if (SerialBT.available()) {
+      char c = SerialBT.read();
+      if (c == '1') {
+        isCrisisTriggered = true;
+        unsigned long startMillis = millis();
+        while (millis() - startMillis < CRISIS_WINDOW_TIME) {
+          isFalseAlarm = 0;
+          taskYIELD();
+          if (isFalseAlarm) {
+            isFalseAlarm = false;
+            send_false_alarm();
+            break;
+          }
+        }
+
+        if (isCrisisTriggered) {
+          isCrisisTriggered = false;
+          crise();
+        }
+      }
+    }
+    vTaskDelay(pdMS_TO_TICKS(20));
+  }
 }
 
 void sensorTask(void* parameter) {
@@ -199,50 +235,43 @@ void sensorTask(void* parameter) {
     readSensors(data);
     blinkLED(LED_collect, DURATION_COLLECT, 1);
     if (millis() - startTime >= RECORDING_DURATION) {
-      if (BluetoothTaskHandle == NULL) {
-        xTaskCreatePinnedToCore(bluetoothTask,"BluetoothTask",2000,NULL,1,&BluetoothTaskHandle,1);
-        startTime = millis();
-      }
-      xQueueSend(dataQueue, &data, portMAX_DELAY);
-      vTaskDelay(pdMS_TO_TICKS(100));
+      xSemaphoreGive(xSemaphore);
+      startTime = millis();
     }
   }
 }
 
 void bluetoothTask(void* parameter) {
+
   SensorData data;
-  bool allDataSent = false;  // Flag to track if all data has been sent
+  bool allDataSent = false;
 
-  while (1) {
-    // Reset the flag when entering the loop
-    allDataSent = false;
+  if (xSemaphoreTake(xSemaphore, portMAX_DELAY) == pdTRUE) {
+    while (1) {
+      allDataSent = false;
+      if (xQueueReceive(dataQueue, &data, portMAX_DELAY)) {
+        dataString = "";
+        if (enableDebugOutput)
+          Serial.printf("--------------Send Data Task running on core %d----------------\n", xPortGetCoreID());
 
-    if (xQueueReceive(dataQueue, &data, portMAX_DELAY)) {
-      dataString = "";
-      if (enableDebugOutput)
-        Serial.printf("--------------Send Data Task running on core %d----------------\n", xPortGetCoreID());
-
-      if (check_bl_cnx()) {
-        SerialBT.println(dataCount); 
-        for (int i = 0; i < dataCount; i++) {
-
-          String load = Query(dataBuffer[i]);
-          Serial.println(load);
-          SerialBT.println(load);
-          delay(10);
-
-          // Check if this is the last data point to be sent
-          if (i == dataCount - 1) {
-            allDataSent = true;
+        if (check_bl_cnx()) {
+          SerialBT.println(dataCount);
+          for (int i = 0; i < dataCount; i++) {
+            String load = Query(dataBuffer[i]);
+            Serial.println(load);
+            SerialBT.println(load);
+            vTaskDelay(pdMS_TO_TICKS(15));
+            if (i == dataCount - 1) {
+              allDataSent = true;
+            }
           }
-        }
-        if (allDataSent) { // Exit task only if all data is sent
-          blinkLED(LED_collect, DURATION_SENDING*2, 2);
-          blinkLED(LED_Sent, DURATION_SENDING*2, 2);
-          dataCount = 0;
-          xQueueReset(dataQueue);
-          break; // Exiting the while loop
-
+          if (allDataSent) {
+            blinkLED(LED_collect, DURATION_SENDING * 2, 2);
+            blinkLED(LED_Sent, DURATION_SENDING * 2, 2);
+            dataCount = 0;
+            xQueueReset(dataQueue);
+            break;
+          }
         }
       }
     }
@@ -267,10 +296,9 @@ void blinkLED(int ledPin, int blinkDuration = 500, int time = 2) {
   pinMode(ledPin, OUTPUT);
   for (int i = 0; i < time; i++) {
     digitalWrite(ledPin, HIGH);
-    delay(blinkDuration / 2);
-
+    vTaskDelay(pdMS_TO_TICKS(blinkDuration / 2));
     digitalWrite(ledPin, LOW);
-    delay(blinkDuration / 2);
+    vTaskDelay(pdMS_TO_TICKS(blinkDuration / 2));
   }
 }
 float roundToOneDecimal(float num) {
@@ -281,7 +309,8 @@ float roundToOneDecimal(float num) {
 }*/
 void crise() {
   Serial.println("crise");
-  vibr(200,3); 
+  SerialBT.println(1);
+  vibr(300, 3);
 }
 /*void reset() {
   Serial.println("reset");
@@ -292,8 +321,9 @@ void debug() {
   enableDebugOutput = !enableDebugOutput;
 }
 void false_alarm() {
+  isCrisisTriggered = 0;
+  isFalseAlarm = 1;
   Serial.println("False_alarme");
-  vibr(150,1); 
 }
 void setupButtons() {
 
@@ -315,23 +345,23 @@ void vibr(int dur, int x) {
 
   for (int i = 0; i < x; i++) {
     digitalWrite(vib, 1);
-    delay(dur);
+    vTaskDelay(pdMS_TO_TICKS(dur));
     digitalWrite(vib, 0);
   }
 }
 int check_bl_cnx() {
-  if (SerialBT.hasClient())
+  if (SerialBT.hasClient()) {
     return 1;
-  else
+  } else {
     showError(BT_DISCONNECTED);
-  delay(100);
-  return 0;
+    return 0;
+  }
 }
+
 void check_sensors() {
   if (!mpu.begin()) showError(SENSOR_INIT_FAIL);
   if (!mlx.begin()) showError(SENSOR_INIT_FAIL);
 }
-
 void readHeartRateSensor(SensorData& data) {
   data.pulseSensorValue = analogRead(PulseSensorPurplePin);
   Signal = data.pulseSensorValue;
@@ -341,7 +371,7 @@ void readHeartRateSensor(SensorData& data) {
     int beatInterval = currentBeatTime - lastBeatTime;
     beatsPerMinute = 60000 / beatInterval;
     lastBeatTime = currentBeatTime;
-    data.pulseSensorValue = beatsPerMinute ; 
+    data.pulseSensorValue = beatsPerMinute;
     if (enableDebugOutput) {
       Serial.print("Heart Rate: ");
       Serial.print(beatsPerMinute);
@@ -350,7 +380,6 @@ void readHeartRateSensor(SensorData& data) {
     }
   }
 }
-
 void readTemperatureSensor(SensorData& data) {
   data.objectTempC = mlx.readObjectTempC();
   if (enableDebugOutput) {
@@ -359,7 +388,6 @@ void readTemperatureSensor(SensorData& data) {
     Serial.println("°C");
   }
 }
-
 void readAccelerometer(SensorData& data) {
   sensors_event_t a, g, temp;
   mpu.getEvent(&a, &g, &temp);
@@ -383,7 +411,6 @@ void readAccelerometer(SensorData& data) {
     Serial.println(" degC");
   }
 }
-
 void readEDA(SensorData& data) {
   int x = read_eda(EDA_pin);
   if (x >= 0) {
@@ -396,12 +423,16 @@ void readEDA(SensorData& data) {
     showError(EDA_NEG);
   }
 }
-
-void read_batt_lvl(SensorData& data){
+void read_batt_lvl(SensorData& data) {
   data.batteryLevel = readBatteryLevel(BATTERY_PIN);
   if (enableDebugOutput) {
     Serial.print("Battery Level: ");
     Serial.print(data.batteryLevel);
     Serial.println("%");
   }
+}
+void send_false_alarm() {
+  vibr(150, 1);
+  SerialBT.println(0);
+  vTaskDelay(pdMS_TO_TICKS(20));
 }
