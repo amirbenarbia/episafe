@@ -35,9 +35,9 @@ TaskHandle_t BluetoothTaskHandle = NULL;
 TaskHandle_t ButtonTaskHandle = NULL;
 
 TaskHandle_t BluetoothReceiveTaskHandle = NULL;
-volatile bool isCrisisTriggered = false;
-volatile bool isFalseAlarm = false;
-
+int isCrisisTriggered = 1;
+int isFalseAlarm = 0;
+int bl_recieved = 0;
 
 OneButton b1 = OneButton(
   pb1,    // Input pin for the button
@@ -103,6 +103,7 @@ void setup() {
   setupButtons();  //push buttons
   mlx.begin();
   mpu.begin();
+  vTaskStartScheduler();
   SerialBT.begin("Episafe");
   dataQueue = xQueueCreate(5, sizeof(SensorData));
   esp_read_mac(mac, ESP_MAC_BT);
@@ -196,8 +197,10 @@ void readSensors(SensorData& data) {
   data.timeStamp = (float)(millis() - startTime);
 
 
-  if (!enableDebugOutput)
-    Serial.print(".-");
+  if (!enableDebugOutput) {
+    Serial.print("..");
+    Serial.println();
+  }
 }
 
 void bluetoothReceiveTask(void* parameter) {
@@ -205,17 +208,24 @@ void bluetoothReceiveTask(void* parameter) {
     if (SerialBT.available()) {
       char c = SerialBT.read();
       if (c == '1') {
+        bl_recieved = 1;
         isCrisisTriggered = true;
         unsigned long startMillis = millis();
+        vTaskSuspend(NULL);
+        Serial.println("starting timer..");
         while (millis() - startMillis < CRISIS_WINDOW_TIME) {
+         
           isFalseAlarm = 0;
-          taskYIELD();
+        
           if (isFalseAlarm) {
             isFalseAlarm = false;
             send_false_alarm();
+            Serial.println("FP ! timer off");
             break;
           }
         }
+        Serial.println("timer off");
+        bl_recieved = 0 ; 
 
         if (isCrisisTriggered) {
           isCrisisTriggered = false;
@@ -247,6 +257,7 @@ void bluetoothTask(void* parameter) {
   bool allDataSent = false;
 
   if (xSemaphoreTake(xSemaphore, portMAX_DELAY) == pdTRUE) {
+    Serial.println("dkhal fel bl task");
     while (1) {
       allDataSent = false;
       if (xQueueReceive(dataQueue, &data, portMAX_DELAY)) {
@@ -324,6 +335,8 @@ void false_alarm() {
   isCrisisTriggered = 0;
   isFalseAlarm = 1;
   Serial.println("False_alarme");
+  if(bl_recieved)
+     vTaskResume(BluetoothReceiveTaskHandle);
 }
 void setupButtons() {
 
@@ -420,7 +433,8 @@ void readEDA(SensorData& data) {
       Serial.println(x);
     }
   } else {
-    showError(EDA_NEG);
+    if (enableDebugOutput)
+      showError(EDA_NEG);
   }
 }
 void read_batt_lvl(SensorData& data) {
